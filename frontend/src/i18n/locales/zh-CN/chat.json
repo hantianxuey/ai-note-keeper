@@ -1,0 +1,14 @@
+{
+  "pageTitle": "AI 聊天",
+  "newChat": "新建聊天",
+  "noConversations": "暂无对话",
+  "startNewChat": "开始新的聊天",
+  "askYourNotes": "向您的笔记提问",
+  "aiWillSearch": "AI 将搜索所有笔记，并基于您的知识回答问题。",
+  "tryAsking": "试试问：\"关于 X 我写了什么？\" 或 \"总结关于 Y 的笔记\"",
+  "askPlaceholder": "询问关于您笔记的任何问题...",
+  "sources": "来源：",
+  "deleteConversationConfirm": "确定要删除这个对话吗？",
+  "aiDisclaimer": "AI 基于您的现有笔记回答。回答可能不准确，请务必核实重要信息。",
+  "thinking": "思考中..."
+}

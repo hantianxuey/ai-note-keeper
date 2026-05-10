@@ -22,14 +22,15 @@ export const NoteModel = {
     userId: number,
     title: string,
     content: string,
+    markdownContent?: string | null,
     tags?: string[] | null,
     category?: string | null
   ): Promise<Note> {
     const result = await pool.query(
-      `INSERT INTO notes (user_id, title, content, tags, category)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO notes (user_id, title, content, markdown_content, tags, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [userId, title, content, tags, category || null]
+      [userId, title, content, markdownContent || null, tags, category || null]
     );
     return result.rows[0];
   },
@@ -39,15 +40,16 @@ export const NoteModel = {
     userId: number,
     title: string,
     content: string,
+    markdownContent?: string | null,
     tags?: string[] | null,
     category?: string | null
   ): Promise<Note | null> {
     const result = await pool.query(
       `UPDATE notes
-       SET title = $1, content = $2, tags = $3, category = $4, updated_at = NOW()
-       WHERE id = $5 AND user_id = $6
+       SET title = $1, content = $2, markdown_content = $3, tags = $4, category = $5, updated_at = NOW()
+       WHERE id = $6 AND user_id = $7
        RETURNING *`,
-      [title, content, tags, category || null, id, userId]
+      [title, content, markdownContent || null, tags, category || null, id, userId]
     );
     return result.rows[0] || null;
   },

@@ -7,7 +7,12 @@ export interface AuthRequest extends Request {
   userId?: number;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set');
+  process.exit(1);
+}
 
 export const authenticate = (
   req: AuthRequest,
@@ -23,7 +28,7 @@ export const authenticate = (
   const token = authHeader.slice(7);
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const decoded = jwt.verify(token, JWT_SECRET!) as { userId: number };
     req.userId = decoded.userId;
     next();
   } catch (error) {

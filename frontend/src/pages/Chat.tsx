@@ -1,33 +1,30 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Send, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ArrowLeft, Send, Plus, Trash2, MessageSquare } from 'lucide-react';
 import { ragAPI } from '../services/api';
 import { Conversation, ConversationMessage } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
+import { useLLMStore } from '../store/useLLMStore';
+import { useEmbeddingStore } from '../store/useEmbeddingStore';
 
 export default function Chat() {
+  const { t, i18n } = useTranslation('chat');
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { config: llmConfig } = useLLMStore();
+  const { config: embeddingConfig } = useEmbeddingStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [question, setQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialLoadDone = useRef(false);
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  useEffect(() => {
-    if (id) {
-      loadConversation(parseInt(id));
-    } else if (conversations.length > 0) {
-      loadConversation(conversations[0].id);
-    }
-  }, [id, conversations]);
-
-  const loadConversations = async () => {
-    setIsLoadingConversations(true);
+  const loadConversations = useCallback(async () => {
     try {
       const response = await ragAPI.listConversations();
       setConversations(response.data.conversations);
@@ -36,17 +33,40 @@ export default function Chat() {
     } finally {
       setIsLoadingConversations(false);
     }
-  };
+  }, []);
 
-  const loadConversation = async (conversationId: number) => {
+  const loadConversation = useCallback(async (conversationId: number) => {
     try {
       const response = await ragAPI.getConversation(conversationId);
       setCurrentConversation(response.data.conversation);
-      setMessages(response.data.conversation.messages);
+      setMessages(response.data.conversation.messages || []);
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (isLoadingConversations) return;
+
+    if (id) {
+      loadConversation(parseInt(id));
+    } else if (!initialLoadDone.current && conversations.length > 0) {
+      loadConversation(conversations[0].id);
+      initialLoadDone.current = true;
+    } else if (!initialLoadDone.current && conversations.length === 0) {
+      setCurrentConversation(null);
+      setMessages([]);
+      initialLoadDone.current = true;
+    }
+  }, [id, isLoadingConversations]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
 
   const handleSend = async () => {
     if (!question.trim() || isLoading) return;
@@ -58,14 +78,17 @@ export default function Chat() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentQuestion = question.trim();
     setQuestion('');
     setIsLoading(true);
 
     try {
-      // TODO: Implement streaming response
       const response = await ragAPI.ask({
-        question: userMessage.content,
+        question: currentQuestion,
         conversationId: currentConversation?.id,
+        provider: llmConfig.provider,
+        model: llmConfig.model,
+        embeddingProvider: embeddingConfig.provider,
       });
 
       const assistantMessage: ConversationMessage = {
@@ -76,23 +99,57 @@ export default function Chat() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      loadConversations();
+
+      const newConversationId = response.data.conversationId;
+
+      if (!currentConversation && newConversationId) {
+        const newConv: Conversation = {
+          id: newConversationId,
+          user_id: 0,
+          title: currentQuestion.length > 50 ? currentQuestion.substring(0, 50) + '...' : currentQuestion,
+          messages: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setCurrentConversation(newConv);
+        navigate(`/chat/${newConversationId}`, { replace: true });
+      }
+
+      await loadConversations();
+
+      if (newConversationId) {
+        await loadConversation(newConversationId);
+      }
     } catch (error) {
       console.error('Failed to get answer:', error);
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleNewChat = () => {
+    setCurrentConversation(null);
+    setMessages([]);
+    navigate('/chat', { replace: true });
+  };
+
+  const handleSelectConversation = async (conversationId: number) => {
+    if (currentConversation?.id === conversationId) return;
+    navigate(`/chat/${conversationId}`);
+  };
+
   const handleDelete = async (conversationId: number) => {
-    if (!confirm('Are you sure you want to delete this conversation?')) return;
+    if (!confirm(t('deleteConversationConfirm'))) return;
 
     try {
       await ragAPI.deleteConversation(conversationId);
-      loadConversations();
+      await loadConversations();
+
       if (currentConversation?.id === conversationId) {
         setCurrentConversation(null);
         setMessages([]);
+        navigate('/chat', { replace: true });
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error);
@@ -106,53 +163,57 @@ export default function Chat() {
     }
   };
 
+  const getLocale = () => {
+    return i18n.language === 'zh-CN' ? zhCN : undefined;
+  };
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      <header className="shrink-0 border-b">
+        <div className="px-4 py-4 flex items-center gap-4">
           <Link to="/" className="p-2 hover:bg-muted rounded-md transition-colors">
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="text-xl font-bold">AI Chat</h1>
+          <h1 className="text-xl font-bold">{t('pageTitle')}</h1>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Conversation list */}
-        <aside className="w-64 shrink-0 border-r p-4 overflow-y-auto">
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        <aside className="w-64 shrink-0 border-r p-4 overflow-y-auto bg-card">
           <div className="mb-4">
             <button
-              onClick={() => {
-                setCurrentConversation(null);
-                setMessages([]);
-              }}
+              onClick={handleNewChat}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
             >
               <Plus size={18} />
-              <span>New Chat</span>
+              <span>{t('newChat')}</span>
             </button>
           </div>
 
           {isLoadingConversations ? (
-            <div className="text-sm text-muted-foreground">Loading...</div>
+            <div className="text-sm text-muted-foreground text-center py-4">{t('loading', { ns: 'common' })}</div>
           ) : conversations.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No conversations yet</div>
+            <div className="text-center py-8">
+              <MessageSquare size={32} className="mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('noConversations')}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t('startNewChat')}</p>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {conversations.map((conv) => (
                 <div
                   key={conv.id}
-                  className={`group flex items-center justify-between p-2 rounded-md cursor-pointer ${
+                  className={`group flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
                     currentConversation?.id === conv.id
                       ? 'bg-secondary'
                       : 'hover:bg-muted'
                   }`}
-                  onClick={() => loadConversation(conv.id)}
+                  onClick={() => handleSelectConversation(conv.id)}
                 >
-                  <div className="overflow-hidden">
-                    <div className="font-medium truncate">{conv.title}</div>
+                  <div className="overflow-hidden flex-1 min-w-0">
+                    <div className="font-medium truncate text-sm">{conv.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(conv.updated_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(conv.updated_at), { addSuffix: true, locale: getLocale() })}
                     </div>
                   </div>
                   <button
@@ -160,9 +221,9 @@ export default function Chat() {
                       e.stopPropagation();
                       handleDelete(conv.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity shrink-0"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               ))}
@@ -170,17 +231,16 @@ export default function Chat() {
           )}
         </aside>
 
-        {/* Chat area */}
         <main className="flex-1 flex flex-col">
-          {messages.length === 0 ? (
+          {messages.length === 0 && !isLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center max-w-md p-6">
-                <h2 className="text-2xl font-bold mb-2">Ask your notes</h2>
+                <h2 className="text-2xl font-bold mb-2">{t('askYourNotes')}</h2>
                 <p className="text-muted-foreground mb-4">
-                  AI will search through all your notes and answer questions based on your knowledge.
+                  {t('aiWillSearch')}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Try asking: "What did I write about X?" or "Summarize my notes on Y"
+                  {t('tryAsking')}
                 </p>
               </div>
             </div>
@@ -203,16 +263,16 @@ export default function Chat() {
                     <div className="whitespace-pre-wrap">{message.content}</div>
                     {message.citations && message.citations.length > 0 && (
                       <div className="mt-3 pt-3 border-t text-xs">
-                        <p className="font-medium mb-1 text-muted-foreground">Sources:</p>
+                        <p className="font-medium mb-1 text-muted-foreground">{t('sources')}</p>
                         <div className="space-y-1">
                           {message.citations.map((citation, i) => (
-                            <a
+                            <Link
                               key={i}
-                              href={`/notes/${citation.noteId}`}
+                              to={`/notes/${citation.noteId}`}
                               className="block hover:underline"
                             >
                               {citation.noteTitle}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -231,17 +291,17 @@ export default function Chat() {
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
           )}
 
-          {/* Input area */}
-          <div className="border-t p-4">
+          <div className="shrink-0 border-t p-4 bg-background">
             <div className="flex gap-2 max-w-5xl mx-auto">
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask anything about your notes..."
+                placeholder={t('askPlaceholder')}
                 className="flex-1 px-3 py-2 border rounded-md bg-background border-input focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 rows={1}
                 disabled={isLoading}
@@ -255,7 +315,7 @@ export default function Chat() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              AI answers based on your existing notes. Responses may be incorrect, always verify important information.
+              {t('aiDisclaimer')}
             </p>
           </div>
         </main>

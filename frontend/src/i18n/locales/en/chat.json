@@ -1,0 +1,14 @@
+{
+  "pageTitle": "AI Chat",
+  "newChat": "New Chat",
+  "noConversations": "No conversations yet",
+  "startNewChat": "Start a new chat to begin",
+  "askYourNotes": "Ask your notes",
+  "aiWillSearch": "AI will search through all your notes and answer questions based on your knowledge.",
+  "tryAsking": "Try asking: \"What did I write about X?\" or \"Summarize my notes on Y\"",
+  "askPlaceholder": "Ask anything about your notes...",
+  "sources": "Sources:",
+  "deleteConversationConfirm": "Are you sure you want to delete this conversation?",
+  "aiDisclaimer": "AI answers based on your existing notes. Responses may be incorrect, always verify important information.",
+  "thinking": "Thinking..."
+}

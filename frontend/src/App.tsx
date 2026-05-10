@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuthStore } from './store/useAuthStore';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -10,14 +11,19 @@ import './index.css';
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const checkAuth = useAuthStore((state) => state.checkAuth);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   return (
     <Router>
-      <div className="min-h-screen">
+      <div className="min-h-screen bg-background">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          {isAuthenticated && (
+          {isAuthenticated ? (
             <>
               <Route path="/" element={<Home />} />
               <Route path="/notes/:id" element={<NoteEditor />} />
@@ -25,6 +31,8 @@ function App() {
               <Route path="/chat/:id" element={<Chat />} />
               <Route path="/settings" element={<Settings />} />
             </>
+          ) : (
+            <Route path="*" element={<Navigate to="/login" replace />} />
           )}
         </Routes>
       </div>

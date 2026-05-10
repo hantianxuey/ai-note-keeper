@@ -11,6 +11,7 @@ export interface Note {
   user_id: number;
   title: string;
   content: string;
+  markdown_content: string | null;
   tags: string[] | null;
   category: string | null;
   created_at: Date;

@@ -1,5 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { NoteModel } from '../models/Note';
+import { vectorSearchService } from '../services/vectorSearchService';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 
@@ -49,7 +50,7 @@ export const createNote = async (
 ) => {
   try {
     const userId = req.userId!;
-    const { title, content, tags, category } = req.body;
+    const { title, content, markdownContent, tags, category } = req.body;
 
     if (!title || !content) {
       return next(new AppError('Title and content are required', 400));
@@ -59,9 +60,14 @@ export const createNote = async (
       userId,
       title,
       content,
+      markdownContent || null,
       tags || null,
       category || null
     );
+
+    vectorSearchService.indexNote(note.id, userId, title, content).catch((err) => {
+      console.error('Background indexing failed:', err);
+    });
 
     res.status(201).json({ note });
   } catch (error) {
@@ -77,7 +83,7 @@ export const updateNote = async (
   try {
     const userId = req.userId!;
     const noteId = parseInt(req.params.id);
-    const { title, content, tags, category } = req.body;
+    const { title, content, markdownContent, tags, category } = req.body;
 
     if (isNaN(noteId)) {
       return next(new AppError('Invalid note ID', 400));
@@ -92,6 +98,7 @@ export const updateNote = async (
       userId,
       title,
       content,
+      markdownContent || null,
       tags || null,
       category || null
     );
@@ -99,6 +106,10 @@ export const updateNote = async (
     if (!note) {
       return next(new AppError('Note not found', 404));
     }
+
+    vectorSearchService.indexNote(noteId, userId, title, content).catch((err) => {
+      console.error('Background indexing failed:', err);
+    });
 
     res.json({ note });
   } catch (error) {
@@ -124,6 +135,10 @@ export const deleteNote = async (
     if (!deleted) {
       return next(new AppError('Note not found', 404));
     }
+
+    vectorSearchService.removeNoteIndex(noteId, userId).catch((err) => {
+      console.error('Background index removal failed:', err);
+    });
 
     res.status(204).end();
   } catch (error) {
