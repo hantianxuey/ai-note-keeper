@@ -176,19 +176,22 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link to="/" className="p-2 hover:bg-muted rounded-md transition-colors">
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-4 sm:px-6">
+          <Link to="/" className="btn-ghost px-2">
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="text-xl font-bold">{t('pageTitle')}</h1>
+          <div>
+            <p className="section-label">Workspace controls</p>
+            <h1 className="text-xl font-bold">{t('pageTitle')}</h1>
+          </div>
         </div>
       </header>
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <main className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
         {message && (
           <div
-            className={`p-4 rounded-md ${
+            className={`rounded-lg border p-4 shadow-sm ${
               message.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
             }`}
           >
@@ -201,28 +204,28 @@ export default function Settings() {
           </div>
         )}
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Globe size={24} className="text-primary" />
+            <Globe size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('language')}</h2>
           </div>
           <div className="flex gap-3">
             <button
               onClick={() => handleChangeLanguage('en')}
-              className={`px-4 py-2 rounded-md border transition-colors ${
+              className={`btn-secondary ${
                 i18n.language === 'en'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'hover:bg-muted'
+                  ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
               }`}
             >
               English
             </button>
             <button
               onClick={() => handleChangeLanguage('zh-CN')}
-              className={`px-4 py-2 rounded-md border transition-colors ${
+              className={`btn-secondary ${
                 i18n.language === 'zh-CN'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'hover:bg-muted'
+                  ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
               }`}
             >
               简体中文
@@ -230,9 +233,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Sun size={24} className="text-primary" />
+            <Sun size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('theme')}</h2>
           </div>
           <div className="flex gap-3">
@@ -240,10 +243,10 @@ export default function Settings() {
               <button
                 key={themeOption}
                 onClick={() => setTheme(themeOption)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md border transition-colors ${
+                className={`btn-secondary ${
                   theme === themeOption
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'hover:bg-muted'
+                    ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+                    : ''
                 }`}
               >
                 {themeOption === 'light' && <Sun size={18} />}
@@ -255,9 +258,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Cpu size={24} className="text-primary" />
+            <Cpu size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('llmModelConfig')}</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
@@ -270,7 +273,7 @@ export default function Settings() {
               <select
                 value={llmConfig.provider}
                 onChange={(e) => setLlmConfig({ provider: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md bg-background text-foreground border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                className="input-field"
               >
                 {llmProviders.map((provider) => (
                   <option
@@ -291,7 +294,7 @@ export default function Settings() {
               <select
                 value={llmConfig.model}
                 onChange={(e) => setLlmConfig({ model: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md bg-background text-foreground border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                className="input-field"
                 disabled={filteredLlmModels.length === 0}
               >
                 {filteredLlmModels.map((model) => (
@@ -306,7 +309,7 @@ export default function Settings() {
               <button
                 onClick={handleLlmTest}
                 disabled={isLlmTesting || filteredLlmModels.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-accent"
               >
                 {isLlmTesting ? (
                   <RefreshCw size={18} className="animate-spin" />
@@ -332,9 +335,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Database size={24} className="text-primary" />
+            <Database size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('embeddingModelConfig')}</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
@@ -347,7 +350,7 @@ export default function Settings() {
               <select
                 value={embeddingConfig.provider}
                 onChange={(e) => setEmbeddingConfig({ provider: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md bg-background text-foreground border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                className="input-field"
               >
                 {embeddingProviders.map((provider) => (
                   <option
@@ -368,7 +371,7 @@ export default function Settings() {
               <select
                 value={embeddingConfig.model}
                 onChange={(e) => setEmbeddingConfig({ model: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md bg-background text-foreground border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                className="input-field"
                 disabled={filteredEmbeddingModels.length === 0}
               >
                 {filteredEmbeddingModels.map((model) => (
@@ -383,7 +386,7 @@ export default function Settings() {
               <button
                 onClick={handleEmbeddingTest}
                 disabled={isEmbeddingTesting || filteredEmbeddingModels.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-accent"
               >
                 {isEmbeddingTesting ? (
                   <RefreshCw size={18} className="animate-spin" />
@@ -409,9 +412,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Key size={24} className="text-primary" />
+            <Key size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('llmApiKeyManagement')}</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
@@ -467,7 +470,7 @@ export default function Settings() {
                           setEditingLlmProvider(isEditing ? null : provider.key);
                           setNewApiKey('');
                         }}
-                        className="px-3 py-1 text-sm border rounded-md hover:bg-muted transition-colors"
+                        className="btn-secondary px-3 py-1"
                       >
                         {isEditing ? t('cancel') : isConfigured ? t('update') : t('addKey')}
                       </button>
@@ -486,12 +489,12 @@ export default function Settings() {
                         value={newApiKey}
                         onChange={(e) => setNewApiKey(e.target.value)}
                         placeholder={t('enterApiKey', { provider: provider.name })}
-                        className="flex-1 px-3 py-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                        className="input-field flex-1"
                       />
                       <button
                         onClick={() => handleSaveLlmApiKey(provider.key)}
                         disabled={savingKey === provider.key || !newApiKey.trim()}
-                        className="flex items-center gap-1 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 text-sm"
+                        className="btn-accent px-3"
                       >
                         {savingKey === provider.key ? (
                           <RefreshCw size={14} className="animate-spin" />
@@ -508,9 +511,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Database size={24} className="text-primary" />
+            <Database size={24} className="text-accent" />
             <h2 className="text-lg font-semibold">{t('embeddingApiKeyManagement')}</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
@@ -566,7 +569,7 @@ export default function Settings() {
                           setEditingEmbeddingProvider(isEditing ? null : provider.key);
                           setNewApiKey('');
                         }}
-                        className="px-3 py-1 text-sm border rounded-md hover:bg-muted transition-colors"
+                        className="btn-secondary px-3 py-1"
                       >
                         {isEditing ? t('cancel') : isConfigured ? t('update') : t('addKey')}
                       </button>
@@ -585,12 +588,12 @@ export default function Settings() {
                         value={newApiKey}
                         onChange={(e) => setNewApiKey(e.target.value)}
                         placeholder={t('enterApiKey', { provider: provider.name })}
-                        className="flex-1 px-3 py-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                        className="input-field flex-1"
                       />
                       <button
                         onClick={() => handleSaveEmbeddingApiKey(provider.key)}
                         disabled={savingKey === provider.key || !newApiKey.trim()}
-                        className="flex items-center gap-1 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 text-sm"
+                        className="btn-accent px-3"
                       >
                         {savingKey === provider.key ? (
                           <RefreshCw size={14} className="animate-spin" />
@@ -607,7 +610,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card rounded-lg p-6 border">
+        <div className="surface p-6">
           <h2 className="text-lg font-semibold mb-4">{t('about')}</h2>
           <p className="text-muted-foreground mb-4">
             {t('aboutDescription')}

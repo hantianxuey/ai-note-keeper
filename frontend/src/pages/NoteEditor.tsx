@@ -264,24 +264,34 @@ export default function NoteEditor() {
     setEditorMode(mode);
   };
 
+  const modeButtons: { mode: EditorMode; icon: React.ReactNode; label: string }[] = [
+    { mode: 'richtext', icon: <Edit size={14} />, label: t('richText') },
+    { mode: 'markdown', icon: <FileText size={14} />, label: t('markdown') },
+    { mode: 'preview', icon: <Eye size={14} />, label: t('preview') },
+    { mode: 'split', icon: <Columns size={14} />, label: t('split') },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
-            <Link to="/" className="p-2 hover:bg-muted rounded-md transition-colors">
+            <Link to="/" className="btn-ghost px-2">
               <ArrowLeft size={20} />
             </Link>
-            <h1 className="text-xl font-bold">
-              {currentNote ? t('editorTitle.edit') : t('editorTitle.new')}
-            </h1>
+            <div>
+              <p className="section-label">Editor</p>
+              <h1 className="text-xl font-bold">
+                {currentNote ? t('editorTitle.edit') : t('editorTitle.new')}
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {currentNote && (
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="flex items-center gap-2 px-3 py-2 text-destructive border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                className="btn-secondary border-destructive/30 text-destructive hover:bg-destructive/10"
               >
                 <Trash2 size={18} />
                 <span className="hidden sm:inline">{t('delete', { ns: 'common' })}</span>
@@ -290,7 +300,7 @@ export default function NoteEditor() {
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="btn-accent"
             >
               <Save size={18} />
               <span className="hidden sm:inline">{isSaving ? t('saving', { ns: 'common' }) : t('save', { ns: 'common' })}</span>
@@ -299,19 +309,96 @@ export default function NoteEditor() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="space-y-4">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('noteTitlePlaceholder')}
-            className="w-full px-4 py-2 text-2xl font-bold border-none bg-transparent focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
-          />
+      <main className="page-container">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0 space-y-4">
+            <div className="surface p-4 sm:p-6">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t('noteTitlePlaceholder')}
+                className="w-full border-0 bg-transparent text-3xl font-bold tracking-tight outline-none placeholder:text-muted-foreground focus:ring-0"
+              />
+            </div>
 
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium mb-1 text-muted-foreground">
+            <div className="surface overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/35 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="section-label mr-1">{t('editorMode')}</span>
+                  {modeButtons.map(({ mode, icon, label }) => (
+                    <button
+                      key={mode}
+                      onClick={() => handleModeChange(mode)}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                        editorMode === mode
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-card hover:text-foreground'
+                      }`}
+                    >
+                      {icon}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className="chip">{markdownContent.length} chars</span>
+              </div>
+
+              <div className={`${editorMode === 'split' ? 'grid grid-cols-1 gap-0 lg:grid-cols-2' : ''}`}>
+                {editorMode === 'richtext' && (
+                  <div className="min-h-[560px] bg-card">
+                    <EditorContent editor={editor} />
+                  </div>
+                )}
+
+                {editorMode === 'markdown' && (
+                  <textarea
+                    value={markdownContent}
+                    onChange={(e) => setMarkdownContent(e.target.value)}
+                    placeholder={t('writeMarkdownHere')}
+                    className="min-h-[560px] w-full resize-none border-0 bg-card p-6 font-mono text-sm leading-6 outline-none"
+                    spellCheck={false}
+                  />
+                )}
+
+                {editorMode === 'preview' && (
+                  <div className="min-h-[560px] bg-card p-6">
+                    <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {markdownContent || t('nothingToPreview')}
+                      </ReactMarkdown>
+                    </article>
+                  </div>
+                )}
+
+                {editorMode === 'split' && (
+                  <>
+                    <textarea
+                      value={markdownContent}
+                      onChange={(e) => setMarkdownContent(e.target.value)}
+                      placeholder={t('writeMarkdownHere')}
+                      className="min-h-[560px] w-full resize-none border-0 border-b border-border bg-card p-6 font-mono text-sm leading-6 outline-none lg:border-b-0 lg:border-r"
+                      spellCheck={false}
+                    />
+                    <div className="min-h-[560px] overflow-auto bg-card p-6">
+                      <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {markdownContent || t('nothingToPreview')}
+                        </ReactMarkdown>
+                      </article>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <aside className="space-y-4">
+            <div className="surface p-5">
+              <h2 className="mb-4 text-lg font-semibold">Metadata</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-muted-foreground">
                 {t('tags')}
               </label>
               <input
@@ -319,11 +406,11 @@ export default function NoteEditor() {
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder={t('tagsPlaceholder')}
-                className="w-full px-3 py-2 border rounded-md bg-background border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="input-field"
               />
             </div>
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium mb-1 text-muted-foreground">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-muted-foreground">
                 {t('category')}
               </label>
               <input
@@ -331,114 +418,24 @@ export default function NoteEditor() {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder={t('categoryPlaceholder')}
-                className="w-full px-3 py-2 border rounded-md bg-background border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="input-field"
               />
             </div>
           </div>
+            </div>
 
-          <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-            <span className="text-sm font-medium text-muted-foreground mr-2">{t('editorMode')}</span>
-            <button
-              onClick={() => handleModeChange('richtext')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                editorMode === 'richtext' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'hover:bg-background'
-              }`}
-            >
-              <Edit size={14} />
-              {t('richText')}
-            </button>
-            <button
-              onClick={() => handleModeChange('markdown')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                editorMode === 'markdown' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'hover:bg-background'
-              }`}
-            >
-              <FileText size={14} />
-              {t('markdown')}
-            </button>
-            <button
-              onClick={() => handleModeChange('preview')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                editorMode === 'preview' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'hover:bg-background'
-              }`}
-            >
-              <Eye size={14} />
-              {t('preview')}
-            </button>
-            <button
-              onClick={() => handleModeChange('split')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                editorMode === 'split' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'hover:bg-background'
-              }`}
-            >
-              <Columns size={14} />
-              {t('split')}
-            </button>
-          </div>
-
-          <div className={`border rounded-md bg-card overflow-hidden ${editorMode === 'split' ? 'grid grid-cols-2 gap-0' : ''}`}>
-            {editorMode === 'richtext' && (
-              <EditorContent editor={editor} />
-            )}
-
-            {editorMode === 'markdown' && (
-              <textarea
-                value={markdownContent}
-                onChange={(e) => setMarkdownContent(e.target.value)}
-                placeholder={t('writeMarkdownHere')}
-                className="w-full min-h-[500px] p-4 font-mono text-sm resize-none focus:outline-none bg-background border-0"
-                spellCheck={false}
-              />
-            )}
-
-            {editorMode === 'preview' && (
-              <div className="p-6 min-h-[500px]">
-                <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {markdownContent || t('nothingToPreview')}
-                  </ReactMarkdown>
-                </article>
-              </div>
-            )}
-
-            {editorMode === 'split' && (
-              <>
-                <textarea
-                  value={markdownContent}
-                  onChange={(e) => setMarkdownContent(e.target.value)}
-                  placeholder={t('writeMarkdownHere')}
-                  className="w-full min-h-[500px] p-4 font-mono text-sm resize-none focus:outline-none bg-background border-0 border-r"
-                  spellCheck={false}
-                />
-                <div className="p-6 min-h-[500px] overflow-auto">
-                  <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {markdownContent || t('nothingToPreview')}
-                    </ReactMarkdown>
-                  </article>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-4">
+            <div className="surface p-5">
+              <h2 className="mb-4 text-lg font-semibold">AI tools</h2>
+              <div className="space-y-3">
             <button
               onClick={handleGenerateSummary}
               disabled={isGeneratingSummary}
-              className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-secondary w-full justify-start"
             >
               <Sparkles size={18} />
               {isGeneratingSummary ? t('generating') : t('generateSummary')}
             </button>
-            <label className={`flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors cursor-pointer ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <label className={`btn-secondary w-full justify-start ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <FileUp size={18} />
               <span>{isImporting ? t('importing') : t('importFile')}</span>
               <input
@@ -449,22 +446,24 @@ export default function NoteEditor() {
                 disabled={isImporting}
               />
             </label>
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span>{t('supportedFormats')}</span>
-              <code className="px-2 py-0.5 bg-muted rounded text-xs">.md</code>
-              <code className="px-2 py-0.5 bg-muted rounded text-xs">.txt</code>
+                  <code className="chip">.md</code>
+                  <code className="chip">.txt</code>
+                </div>
             </div>
           </div>
 
           {summary && (
-            <div className="mt-4 p-4 bg-muted rounded-md">
+              <div className="surface border-accent/30 bg-accent/5 p-5">
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                <Sparkles size={16} className="text-primary" />
+                <Sparkles size={16} className="text-accent" />
                 {t('aiSummary')}
               </h3>
-              <p className="text-sm">{summary}</p>
+                <p className="text-sm leading-6 text-muted-foreground">{summary}</p>
             </div>
           )}
+          </aside>
         </div>
       </main>
     </div>

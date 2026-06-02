@@ -25,7 +25,7 @@ export default function ThemeToggle({ variant = 'icon' }: ThemeToggleProps) {
             : (theme === 'light' ? 'dark' : 'light');
           setTheme(nextTheme);
         }}
-        className="p-2 hover:bg-muted rounded-md transition-colors"
+        className="btn-ghost px-2"
         title="Toggle theme"
       >
         {currentIcon}
@@ -39,10 +39,10 @@ export default function ThemeToggle({ variant = 'icon' }: ThemeToggleProps) {
         <button
           key={value}
           onClick={() => setTheme(value)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md border transition-colors ${
+          className={`btn-secondary ${
             theme === value
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'hover:bg-muted'
+              ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+              : ''
           }`}
         >
           {icon}

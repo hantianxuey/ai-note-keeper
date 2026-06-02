@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Send, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Send, Plus, Trash2, MessageSquare, Sparkles, BookOpen } from 'lucide-react';
 import { ragAPI } from '../services/api';
-import { Conversation, ConversationMessage } from '../types';
+import { Conversation, ConversationMessage, Citation } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { useLLMStore } from '../store/useLLMStore';
@@ -23,6 +23,52 @@ export default function Chat() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
+
+  const renderMessageWithCitations = (content: string, citations?: Citation[]) => {
+    if (!citations || citations.length === 0) {
+      return <span>{content}</span>;
+    }
+
+    const parts: React.ReactNode[] = [];
+    const regex = /\[Source (\d+):\s*"([^"]+)"\]/g;
+    let lastIndex = 0;
+    let match;
+    let key = 0;
+
+    while ((match = regex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(<span key={key++}>{content.slice(lastIndex, match.index)}</span>);
+      }
+
+      const sourceIndex = parseInt(match[1], 10);
+      const noteTitle = match[2];
+      const citation = citations.find((c) => c.sourceIndex === sourceIndex) ||
+        citations.find((c) => c.noteTitle === noteTitle);
+
+      if (citation) {
+        parts.push(
+          <Link
+            key={key++}
+            to={`/notes/${citation.noteId}`}
+            className="mx-0.5 inline-flex items-center rounded border border-border/70 bg-muted px-1.5 py-0.5 text-xs no-underline transition hover:bg-muted/80"
+            title={noteTitle}
+          >
+            <span className="max-w-[120px] truncate">{noteTitle}</span>
+          </Link>
+        );
+      } else {
+        parts.push(<span key={key++} className="text-xs text-muted-foreground">{match[0]}</span>);
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(<span key={key++}>{content.slice(lastIndex)}</span>);
+    }
+
+    return <>{parts}</>;
+  };
 
   const loadConversations = useCallback(async () => {
     try {
@@ -62,7 +108,7 @@ export default function Chat() {
       setMessages([]);
       initialLoadDone.current = true;
     }
-  }, [id, isLoadingConversations]);
+  }, [id, isLoadingConversations, conversations, loadConversation]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -167,51 +213,58 @@ export default function Chat() {
     return i18n.language === 'zh-CN' ? zhCN : undefined;
   };
 
+  const starterPrompts = [
+    t('tryAsking'),
+    'Summarize the notes tagged project',
+    'Find decisions from my latest meeting',
+    'What should I review today?',
+  ];
+
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b">
-        <div className="px-4 py-4 flex items-center gap-4">
-          <Link to="/" className="p-2 hover:bg-muted rounded-md transition-colors">
+    <div className="app-shell flex h-screen flex-col overflow-hidden">
+      <header className="app-header shrink-0">
+        <div className="flex h-16 items-center gap-4 px-4 sm:px-6">
+          <Link to="/" className="btn-ghost px-2">
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="text-xl font-bold">{t('pageTitle')}</h1>
+          <div>
+            <p className="section-label">RAG assistant</p>
+            <h1 className="text-xl font-bold">{t('pageTitle')}</h1>
+          </div>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        <aside className="w-64 shrink-0 border-r p-4 overflow-y-auto bg-card">
-          <div className="mb-4">
-            <button
-              onClick={handleNewChat}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-            >
-              <Plus size={18} />
-              <span>{t('newChat')}</span>
-            </button>
-          </div>
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
+        <aside className="hidden w-80 shrink-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm md:flex md:flex-col">
+          <button onClick={handleNewChat} className="btn-accent m-4 mb-3">
+            <Plus size={18} />
+            <span>{t('newChat')}</span>
+          </button>
 
           {isLoadingConversations ? (
-            <div className="text-sm text-muted-foreground text-center py-4">{t('loading', { ns: 'common' })}</div>
+            <div className="p-4 text-center text-sm text-muted-foreground">{t('loading', { ns: 'common' })}</div>
           ) : conversations.length === 0 ? (
-            <div className="text-center py-8">
-              <MessageSquare size={32} className="mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t('noConversations')}</p>
-              <p className="text-xs text-muted-foreground mt-1">{t('startNewChat')}</p>
+            <div className="p-8 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                <MessageSquare size={24} />
+              </div>
+              <p className="text-sm font-semibold">{t('noConversations')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('startNewChat')}</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3 pt-0">
               {conversations.map((conv) => (
                 <div
                   key={conv.id}
-                  className={`group flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
+                  className={`group flex cursor-pointer items-center justify-between rounded-md border p-3 transition ${
                     currentConversation?.id === conv.id
-                      ? 'bg-secondary'
-                      : 'hover:bg-muted'
+                      ? 'border-accent/40 bg-accent/10'
+                      : 'border-transparent hover:border-border hover:bg-muted/60'
                   }`}
                   onClick={() => handleSelectConversation(conv.id)}
                 >
-                  <div className="overflow-hidden flex-1 min-w-0">
-                    <div className="font-medium truncate text-sm">{conv.title}</div>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="truncate text-sm font-semibold">{conv.title}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(conv.updated_at), { addSuffix: true, locale: getLocale() })}
                     </div>
@@ -221,7 +274,7 @@ export default function Chat() {
                       e.stopPropagation();
                       handleDelete(conv.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity shrink-0"
+                    className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -231,47 +284,69 @@ export default function Chat() {
           )}
         </aside>
 
-        <main className="flex-1 flex flex-col">
+        <main className="surface flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border bg-muted/25 px-4 py-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">
+                {currentConversation?.title || t('askYourNotes')}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Using {llmConfig.provider} / {embeddingConfig.provider}
+              </div>
+            </div>
+            <button onClick={handleNewChat} className="btn-secondary md:hidden">
+              <Plus size={16} />
+              {t('newChat')}
+            </button>
+          </div>
+
           {messages.length === 0 && !isLoading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-md p-6">
-                <h2 className="text-2xl font-bold mb-2">{t('askYourNotes')}</h2>
-                <p className="text-muted-foreground mb-4">
-                  {t('aiWillSearch')}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('tryAsking')}
-                </p>
+            <div className="flex flex-1 items-center justify-center">
+              <div className="max-w-xl p-6 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <Sparkles size={30} />
+                </div>
+                <h2 className="mb-2 text-3xl font-bold">{t('askYourNotes')}</h2>
+                <p className="mb-5 leading-7 text-muted-foreground">{t('aiWillSearch')}</p>
+                <div className="grid gap-2 text-left sm:grid-cols-2">
+                  {starterPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => setQuestion(prompt)}
+                      className="rounded-md border border-border bg-card p-3 text-sm text-muted-foreground transition hover:border-accent/40 hover:text-foreground"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 space-y-5 overflow-y-auto bg-background/40 p-4 sm:p-6">
               {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
+                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
-                    className={`max-w-[80%] p-4 rounded-lg ${
+                    className={`max-w-[85%] rounded-lg p-4 shadow-sm ${
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-card border'
+                        : 'border border-border bg-card'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div className="whitespace-pre-wrap leading-7">
+                      {renderMessageWithCitations(message.content, message.citations)}
+                    </div>
                     {message.citations && message.citations.length > 0 && (
-                      <div className="mt-3 pt-3 border-t text-xs">
-                        <p className="font-medium mb-1 text-muted-foreground">{t('sources')}</p>
+                      <div className="mt-3 border-t pt-3 text-xs">
+                        <p className="mb-2 flex items-center gap-1 font-medium text-muted-foreground">
+                          <BookOpen size={13} />
+                          {t('sources')}
+                        </p>
                         <div className="space-y-1">
                           {message.citations.map((citation, i) => (
-                            <Link
-                              key={i}
-                              to={`/notes/${citation.noteId}`}
-                              className="block hover:underline"
-                            >
-                              {citation.noteTitle}
+                            <Link key={i} to={`/notes/${citation.noteId}`} className="block hover:underline">
+                              <span className="font-medium">
+                                [{citation.sourceIndex || i + 1}] {citation.noteTitle}
+                              </span>
                             </Link>
                           ))}
                         </div>
@@ -282,11 +357,11 @@ export default function Chat() {
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="max-w-[80%] p-4 rounded-lg bg-card border">
+                  <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
                     <div className="flex gap-2">
-                      <span className="animate-bounce">●</span>
-                      <span className="animate-bounce delay-100">●</span>
-                      <span className="animate-bounce delay-200">●</span>
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent delay-100" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent delay-200" />
                     </div>
                   </div>
                 </div>
@@ -295,28 +370,22 @@ export default function Chat() {
             </div>
           )}
 
-          <div className="shrink-0 border-t p-4 bg-background">
-            <div className="flex gap-2 max-w-5xl mx-auto">
+          <div className="shrink-0 border-t border-border bg-card p-4">
+            <div className="mx-auto flex max-w-5xl gap-2">
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={t('askPlaceholder')}
-                className="flex-1 px-3 py-2 border rounded-md bg-background border-input focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                className="input-field min-h-[44px] flex-1 resize-none"
                 rows={1}
                 disabled={isLoading}
               />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !question.trim()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={handleSend} disabled={isLoading || !question.trim()} className="btn-accent px-4">
                 <Send size={20} />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              {t('aiDisclaimer')}
-            </p>
+            <p className="mt-2 text-center text-xs text-muted-foreground">{t('aiDisclaimer')}</p>
           </div>
         </main>
       </div>
