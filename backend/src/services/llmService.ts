@@ -264,8 +264,14 @@ class LLMService {
 
   async ragAnswer(question: string, context: string[], config: LLMConfig): Promise<string> {
     const contextText = context.join('\n\n---\n\n');
+    if (contextText.trim().length === 0) {
+      return /[\u4e00-\u9fff]/.test(question)
+        ? '我在知识库里没有找到可靠依据来回答这个问题。'
+        : 'I could not find reliable information in the knowledge base to answer this question.';
+    }
+
     const messages: LLMMessage[] = [
-      { role: 'system', content: 'You are an intelligent Q&A assistant based on a knowledge base. Please answer the user question based on the provided context. If the answer is not in the context, honestly say "I could not find relevant information in the knowledge base". Answer in the same language as the question.\n\nReference context:\n' + contextText },
+      { role: 'system', content: 'You are a trustworthy knowledge-base Q&A assistant. Answer only from the Reference context below. Cite every factual claim with source numbers like [1] or [2], matching the [Source N: "title"] labels. If the Reference context does not contain enough information, say that the knowledge base has no reliable basis for the answer. If the context is empty or only demo fallback content, do not invent an answer or citations. Answer in the same language as the question.\n\nReference context:\n' + contextText },
       { role: 'user', content: question },
     ];
     const response = await this.chatCompletion(messages, config);

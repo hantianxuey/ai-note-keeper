@@ -34,6 +34,17 @@ export interface Citation {
   noteId: number;
   noteTitle: string;
   snippet: string;
+  sourceIndex?: number;
+  searchSource?: 'vector' | 'fulltext' | 'ilike' | 'keyword' | 'demo';
+  rank?: number;
+  score?: number;
+}
+
+export type RetrievalStatus = 'ok' | 'empty' | 'error';
+
+export interface RetrievalMetadata {
+  status: RetrievalStatus;
+  message?: string;
 }
 
 export interface LoginRequest {
@@ -63,6 +74,22 @@ export interface UpdateNoteRequest extends CreateNoteRequest {}
 export interface AskRequest {
   question: string;
   conversationId?: number;
+  provider?: string;
+  model?: string;
+  embeddingProvider?: string;
+}
+
+export interface AskResponse {
+  answer: string;
+  citations: Citation[];
+  conversationId: number;
+  retrieval?: RetrievalMetadata;
+  metadata?: {
+    provider: string;
+    model: string;
+    embeddingProvider: string;
+    citationCount: number;
+  };
 }
 
 export interface SearchResponse {

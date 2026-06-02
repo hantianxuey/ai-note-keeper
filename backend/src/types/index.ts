@@ -38,6 +38,17 @@ export interface Citation {
   noteId: number;
   noteTitle: string;
   snippet: string;
+  sourceIndex?: number;
+  searchSource?: 'vector' | 'fulltext' | 'ilike' | 'keyword' | 'demo';
+  rank?: number;
+  score?: number;
+}
+
+export type RetrievalStatus = 'ok' | 'empty' | 'error';
+
+export interface RetrievalMetadata {
+  status: RetrievalStatus;
+  message?: string;
 }
 
 export interface SearchResult {

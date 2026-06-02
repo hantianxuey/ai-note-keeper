@@ -38,7 +38,7 @@ export const askQuestion = async (
       timestamp: Date.now(),
     };
 
-    const { context, citations } = await vectorSearchService.getContextForQuestion(userId, question, 5, finalEmbeddingProvider);
+    const { context, citations, retrieval } = await vectorSearchService.getContextForQuestion(userId, question, 5, finalEmbeddingProvider);
 
     const answer = await llmService.ragAnswer(question, context, {
       provider: finalProvider,
@@ -63,6 +63,13 @@ export const askQuestion = async (
       answer,
       citations,
       conversationId: conversation.id,
+      retrieval,
+      metadata: {
+        provider: finalProvider,
+        model: finalModel,
+        embeddingProvider: finalEmbeddingProvider,
+        citationCount: citations.length,
+      },
     });
   } catch (error) {
     next(error);

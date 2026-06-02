@@ -1,6 +1,6 @@
 import pool from '../config/database';
 import { embeddingService } from './embeddingService';
-import { Citation } from '../types';
+import { Citation, RetrievalMetadata } from '../types';
 
 const CHUNK_SIZE = 500;
 const CHUNK_OVERLAP = 50;
@@ -163,8 +163,8 @@ class VectorSearchService {
       console.log('🔍 Search called:', { userId, query, limit, provider });
       const ready = await this.ensureChunkTable();
       if (!ready) {
-        console.log('⚠️ Chunk table not ready, returning demo citations');
-        return this.getDemoCitations();
+        console.log('⚠️ Chunk table not ready, returning no citations');
+        return [];
       }
 
       const effectiveProvider = provider || this.getDefaultProvider();
@@ -322,8 +322,8 @@ class VectorSearchService {
       }
 
       if (results.length === 0) {
-        console.log('⚠️ No results found, returning demo citations');
-        return this.getDemoCitations();
+        console.log('⚠️ No results found');
+        return [];
       }
 
       console.log('✅ Search completed with', results.length, 'results, sources:', results.map((r) => r.source).join(', '));
@@ -334,25 +334,22 @@ class VectorSearchService {
           seen.add(r.note_id);
           return true;
         })
-        .map((r) => ({
+        .map((r, index) => ({
           noteId: r.note_id,
           noteTitle: r.title,
           snippet: r.snippet,
+          sourceIndex: index + 1,
+          searchSource: r.source as Citation['searchSource'],
+          rank: r.rank,
+          score: r.rank,
         }));
     } catch (error) {
-      console.error('❌ Search failed, falling back to demo:', error);
-      return this.getDemoCitations();
+      console.error('❌ Search failed:', error);
+      return [];
     }
   }
 
-  private getDemoCitations(): Citation[] {
-    return [
-      { noteId: 1, noteTitle: 'Demo Note - AI Basics', snippet: 'This is a simulated citation from your knowledge base. In production mode with a real AI provider, the system would search through your actual notes to find relevant context.' },
-      { noteId: 2, noteTitle: 'Demo Note - Project Notes', snippet: 'Demo mode simulates RAG functionality. Configure an API key in Settings to enable real AI-powered search.' },
-    ];
-  }
-
-  async getContextForQuestion(userId: number, question: string, maxChunks: number = 5, provider?: string): Promise<{ context: string[]; citations: Citation[] }> {
+  async getContextForQuestion(userId: number, question: string, maxChunks: number = 5, provider?: string): Promise<{ context: string[]; citations: Citation[]; retrieval: RetrievalMetadata }> {
     const citations = await this.search(userId, question, maxChunks, provider);
     
     let totalLength = 0;
@@ -372,7 +369,19 @@ class VectorSearchService {
       totalLength += entry.length;
     }
     
-    return { context, citations: citations.slice(0, context.length) };
+    const trimmedCitations = citations.slice(0, context.length).map((citation, index) => ({
+      ...citation,
+      sourceIndex: index + 1,
+    }));
+    const retrieval: RetrievalMetadata = trimmedCitations.length > 0
+      ? { status: 'ok' }
+      : { status: 'empty', message: 'No relevant notes found in the knowledge base.' };
+
+    return {
+      context,
+      citations: trimmedCitations,
+      retrieval,
+    };
   }
 
   async reindexAllNotes(): Promise<number> {

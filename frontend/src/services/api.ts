@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Note, User } from '../types';
+import { AskResponse, Conversation, Note, User } from '../types';
 
 const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -144,9 +144,9 @@ export const aiAPI = {
 
 export const ragAPI = {
   ask: (data: { question: string; conversationId?: number; provider?: string; model?: string; embeddingProvider?: string }) =>
-    api.post('/rag/ask', data),
-  listConversations: () => api.get('/rag/conversations'),
-  getConversation: (id: number) => api.get('/rag/conversations/' + id),
+    api.post<AskResponse>('/rag/ask', data),
+  listConversations: () => api.get<{ conversations: Conversation[] }>('/rag/conversations'),
+  getConversation: (id: number) => api.get<{ conversation: Conversation }>('/rag/conversations/' + id),
   deleteConversation: (id: number) => api.delete('/rag/conversations/' + id),
 };
 
