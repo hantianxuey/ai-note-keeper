@@ -1,0 +1,106 @@
+name: Deploy Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "Artifact package id, for example ai-note-keeper-42-a1b2c3d"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
+  ECS_USER: ${{ secrets.ECS_USER || 'root' }}
+  ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
+
+jobs:
+  deploy:
+    name: Deploy selected package
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Download package artifact by package id
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_ID: ${{ inputs.package_id }}
+        run: |
+          set -euo pipefail
+          artifact_url="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${PACKAGE_ID}&per_page=1" \
+              --jq '.artifacts[0].archive_download_url'
+          )"
+          test -n "${artifact_url}"
+          test "${artifact_url}" != "null"
+          mkdir -p package
+          gh api "${artifact_url}" > package/artifact.zip
+          unzip -q package/artifact.zip -d package
+          test -f "package/${PACKAGE_ID}.tar.gz"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ECS_SSH_PRIVATE_KEY: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${ECS_SSH_PRIVATE_KEY}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${ECS_SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          if [ -n "${ECS_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${ECS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${ECS_HOST}" > ~/.ssh/known_hosts
+          fi
+
+      - name: Deploy package to ECS
+        shell: bash
+        env:
+          PACKAGE_ID: ${{ inputs.package_id }}
+        run: |
+          set -euo pipefail
+          package_file="package/${PACKAGE_ID}.tar.gz"
+          remote_package="/tmp/${PACKAGE_ID}.tar.gz"
+
+          scp "${package_file}" "${ECS_USER}@${ECS_HOST}:${remote_package}"
+          ssh "${ECS_USER}@${ECS_HOST}" \
+            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
+          mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs"
+          rm -rf "${release_dir}"
+          mkdir -p "${release_dir}"
+          tar -xzf "${PACKAGE_FILE}" -C "${APP_PATH}/releases"
+
+          if [ -f "${APP_PATH}/backend/.env" ]; then
+            cp "${APP_PATH}/backend/.env" "${release_dir}/backend/.env"
+          fi
+
+          mkdir -p "${release_dir}/backend/logs"
+          cd "${release_dir}/backend"
+          npm ci --omit=dev
+
+          ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
+          ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"
+
+          pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
+          pm2 save
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo nginx -t
+            sudo nginx -s reload
+          else
+            nginx -t
+            nginx -s reload
+          fi
+          EOF

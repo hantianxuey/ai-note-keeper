@@ -1,0 +1,202 @@
+name: Build Package
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # 12:00 Asia/Shanghai every day.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      deploy_after_build:
+        description: "Deploy this package after a successful build"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  NODE_VERSION: "20"
+  ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
+  ECS_USER: ${{ secrets.ECS_USER || 'root' }}
+  ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
+  VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://8.136.39.247/api' }}
+
+jobs:
+  build:
+    name: Test, lint, build, and package
+    runs-on: ubuntu-latest
+    outputs:
+      package_id: ${{ steps.package-meta.outputs.package_id }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set package metadata
+        id: package-meta
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          package_id="ai-note-keeper-${GITHUB_RUN_NUMBER}-${short_sha}"
+          echo "package_id=${package_id}" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_ID=${package_id}" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm test --if-present
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: npm test --if-present
+
+      - name: Run backend lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Assemble release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="release/${PACKAGE_ID}"
+          mkdir -p "${release_dir}/frontend" "${release_dir}/backend" "${release_dir}/deploy"
+
+          cp -a frontend/dist/. "${release_dir}/frontend/"
+          cp -a backend/dist "${release_dir}/backend/"
+          cp backend/package.json backend/package-lock.json backend/pm2.json "${release_dir}/backend/"
+          cp deploy/nginx.conf "${release_dir}/deploy/"
+
+          cat > "${release_dir}/VERSION" <<EOF
+          package_id=${PACKAGE_ID}
+          commit=${GITHUB_SHA}
+          run_number=${GITHUB_RUN_NUMBER}
+          built_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+
+          tar -czf "${PACKAGE_ID}.tar.gz" -C release "${PACKAGE_ID}"
+          tar -tzf "${PACKAGE_ID}.tar.gz" >/dev/null
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_ID }}
+          path: ${{ env.PACKAGE_ID }}.tar.gz
+          retention-days: 30
+
+      - name: Write package summary
+        shell: bash
+        run: |
+          {
+            echo "## Package"
+            echo ""
+            echo "\`${PACKAGE_ID}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy scheduled or requested build
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || inputs.deploy_after_build == true
+    environment: production
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.package_id }}
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ECS_SSH_PRIVATE_KEY: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${ECS_SSH_PRIVATE_KEY}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${ECS_SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          if [ -n "${ECS_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${ECS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${ECS_HOST}" > ~/.ssh/known_hosts
+          fi
+
+      - name: Deploy package to ECS
+        shell: bash
+        env:
+          PACKAGE_ID: ${{ needs.build.outputs.package_id }}
+        run: |
+          set -euo pipefail
+          package_file="${PACKAGE_ID}.tar.gz"
+          remote_package="/tmp/${package_file}"
+
+          scp "${package_file}" "${ECS_USER}@${ECS_HOST}:${remote_package}"
+          ssh "${ECS_USER}@${ECS_HOST}" \
+            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
+          mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs"
+          rm -rf "${release_dir}"
+          mkdir -p "${release_dir}"
+          tar -xzf "${PACKAGE_FILE}" -C "${APP_PATH}/releases"
+
+          if [ -f "${APP_PATH}/backend/.env" ]; then
+            cp "${APP_PATH}/backend/.env" "${release_dir}/backend/.env"
+          fi
+
+          mkdir -p "${release_dir}/backend/logs"
+          cd "${release_dir}/backend"
+          npm ci --omit=dev
+
+          ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
+          ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"
+
+          pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
+          pm2 save
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo nginx -t
+            sudo nginx -s reload
+          else
+            nginx -t
+            nginx -s reload
+          fi
+          EOF
