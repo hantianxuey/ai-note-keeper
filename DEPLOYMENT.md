@@ -30,6 +30,8 @@ Trigger:
 
 The deploy job downloads that package artifact, uploads it to ECS, extracts it under `/opt/ai-note-keeper/releases/<package-id>`, updates `/opt/ai-note-keeper/frontend` and `/opt/ai-note-keeper/backend` symlinks, runs production dependency install for the backend, reloads PM2, and reloads Nginx.
 
+The backend install uses `npm ci --omit=dev --ignore-scripts` on ECS. This avoids native postinstall downloads that can hang in the server environment while keeping the API, PostgreSQL persistence, and fallback embedding behavior available.
+
 ## GitHub Secrets
 
 Add these in GitHub repository settings: `Settings` -> `Secrets and variables` -> `Actions`.
@@ -78,7 +80,7 @@ Minimum required values:
 ```env
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=postgresql://username:password@127.0.0.1:5432/ainotes
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ainotes
 JWT_SECRET=replace-with-a-strong-secret
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
