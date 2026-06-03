@@ -25,11 +25,26 @@ env:
   ECS_USER: ${{ secrets.ECS_USER || 'root' }}
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
   VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://8.136.39.247/api' }}
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ainotes
 
 jobs:
   build:
     name: Test, lint, build, and package
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ainotes
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ainotes"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     outputs:
       package_id: ${{ steps.package-meta.outputs.package_id }}
 
@@ -77,6 +92,27 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Initialize CI database
+        working-directory: backend
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const { Client } = require('pg');
+
+          async function main() {
+            const client = new Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            await client.query(fs.readFileSync('src/config/init.sql', 'utf8'));
+            await client.end();
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
       - name: Run backend unit tests
         working-directory: backend
         run: npm test --if-present
@@ -110,6 +146,30 @@ jobs:
 
           tar -czf "${PACKAGE_ID}.tar.gz" -C release "${PACKAGE_ID}"
           tar -tzf "${PACKAGE_ID}.tar.gz" >/dev/null
+
+      - name: Smoke test release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          tar -xzf "${PACKAGE_ID}.tar.gz" -C "${smoke_dir}"
+
+          cd "${smoke_dir}/${PACKAGE_ID}/backend"
+          npm ci --omit=dev --ignore-scripts
+
+          NODE_ENV=production PORT=3100 DATABASE_URL="${DATABASE_URL}" node dist/server.js > "${smoke_dir}/server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat "${smoke_dir}/server.log"
+          exit 1
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
