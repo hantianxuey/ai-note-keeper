@@ -184,10 +184,11 @@ jobs:
 
           mkdir -p "${release_dir}/backend/logs"
           cd "${release_dir}/backend"
-          npm ci --omit=dev
+          npm ci --omit=dev --ignore-scripts
 
           ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
           ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"
+          install -m 0644 "${release_dir}/deploy/nginx.conf" /etc/nginx/conf.d/ai-note-keeper.conf
 
           pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
           pm2 save
