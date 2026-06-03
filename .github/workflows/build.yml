@@ -1,6 +1,9 @@
 name: Build Package
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -8,12 +11,6 @@ on:
     # 12:00 Asia/Shanghai every day.
     - cron: "0 4 * * *"
   workflow_dispatch:
-    inputs:
-      deploy_after_build:
-        description: "Deploy this package after a successful build"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -27,6 +24,7 @@ env:
   VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://8.136.39.247/api' }}
   DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ainotes
   JWT_SECRET: ci-smoke-test-secret
+  INCREMENTAL_COVERAGE_THRESHOLD: "60"
 
 jobs:
   build:
@@ -52,14 +50,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set package metadata
         id: package-meta
         shell: bash
         run: |
           short_sha="${GITHUB_SHA::7}"
-          package_id="ai-note-keeper-${GITHUB_RUN_NUMBER}-${short_sha}"
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ] || [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            package_type="release"
+          else
+            package_type="snapshot"
+          fi
+          package_id="ai-note-keeper-${package_type}-${GITHUB_RUN_NUMBER}-${short_sha}"
+          echo "package_type=${package_type}" >> "$GITHUB_OUTPUT"
           echo "package_id=${package_id}" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_TYPE=${package_type}" >> "$GITHUB_ENV"
           echo "PACKAGE_ID=${package_id}" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
@@ -75,9 +82,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run frontend unit tests
+      - name: Run frontend unit tests with coverage
         working-directory: frontend
-        run: npm test --if-present
+        run: npm run test:coverage
+
+      - name: Check frontend incremental coverage
+        working-directory: frontend
+        run: npm run test:coverage:incremental
 
       - name: Run frontend lint
         working-directory: frontend
@@ -114,9 +125,13 @@ jobs:
           });
           NODE
 
-      - name: Run backend unit tests
+      - name: Run backend unit tests with coverage
         working-directory: backend
-        run: npm test --if-present
+        run: npm run test:coverage
+
+      - name: Check backend incremental coverage
+        working-directory: backend
+        run: npm run test:coverage:incremental
 
       - name: Run backend lint
         working-directory: backend
@@ -186,13 +201,15 @@ jobs:
             echo "## Package"
             echo ""
             echo "\`${PACKAGE_ID}\`"
+            echo ""
+            echo "Type: \`${PACKAGE_TYPE}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
-    name: Deploy scheduled or requested build
+    name: Deploy scheduled release build
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || inputs.deploy_after_build == true
+    if: github.event_name == 'schedule'
     environment: production
 
     steps:

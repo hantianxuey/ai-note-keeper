@@ -9,26 +9,45 @@ This repository deploys to Aliyun ECS `8.136.39.247` through GitHub Actions.
 File: `.github/workflows/build.yml`
 
 Triggers:
-- Push to `main`: run unit tests if configured, lint, build, and upload a package artifact.
-- Manual run: same build flow. You can choose `deploy_after_build=true`.
-- Daily schedule: `04:00 UTC`, which is `12:00 Asia/Shanghai`. It builds and deploys automatically.
+- Pull request to `main`: run unit tests with coverage gates, lint, build, smoke test the packaged backend, and upload a `snapshot` package artifact. It does not deploy automatically.
+- Push to `main`: run the same checks and upload a `snapshot` package artifact. It does not deploy automatically.
+- Manual run: run the same checks and upload a `release` package artifact. It does not deploy automatically; deploy it with the package id through `Deploy Package`.
+- Daily schedule: `04:00 UTC`, which is `12:00 Asia/Shanghai`. It builds a `release` package and deploys it automatically after the package passes all gates.
 
 Package id format:
 
 ```text
-ai-note-keeper-<github-run-number>-<short-commit-sha>
+ai-note-keeper-<snapshot|release>-<github-run-number>-<short-commit-sha>
 ```
 
 The package is uploaded as a GitHub Actions artifact and retained for 30 days.
+
+Build gates:
+- Frontend unit tests with coverage: `npm run test:coverage`.
+- Frontend incremental coverage: `npm run test:coverage:incremental`.
+- Frontend lint: `npm run lint`.
+- Frontend production build: `npm run build`.
+- Backend unit tests with coverage: `npm run test:coverage`.
+- Backend incremental coverage: `npm run test:coverage:incremental`.
+- Backend lint: `npm run lint`.
+- Backend production build: `npm run build`.
+- Release package smoke test: install production backend dependencies from the generated package, start `node dist/server.js`, and verify `/health`.
+
+Coverage gates:
+- Global coverage minimums are configured in `frontend/vitest.config.ts` and `backend/vitest.config.ts`.
+- Incremental coverage checks changed source lines against `INCREMENTAL_COVERAGE_THRESHOLD`, currently `60%`.
+- If either global coverage or incremental coverage fails, the workflow stops before packaging and the pull request cannot pass the required build check.
 
 ### Deploy Package
 
 File: `.github/workflows/deploy.yml`
 
 Trigger:
-- Manual only. Open GitHub Actions, choose `Deploy Package`, and enter a package id such as `ai-note-keeper-42-a1b2c3d`.
+- Manual only. Open GitHub Actions, choose `Deploy Package`, and enter a package id such as `ai-note-keeper-snapshot-42-a1b2c3d` or `ai-note-keeper-release-42-a1b2c3d`.
 
-The deploy job downloads that package artifact, uploads it to ECS, extracts it under `/opt/ai-note-keeper/releases/<package-id>`, updates `/opt/ai-note-keeper/frontend` and `/opt/ai-note-keeper/backend` symlinks, runs production dependency install for the backend, reloads PM2, and reloads Nginx.
+The deploy job downloads that package artifact, uploads it to ECS, extracts it under `/opt/ai-note-keeper/releases/<package-id>`, updates `/opt/ai-note-keeper/frontend` and `/opt/ai-note-keeper/backend` symlinks, installs the packaged Nginx config, runs production dependency install for the backend, reloads PM2, and reloads Nginx.
+
+Both `snapshot` and `release` packages can be deployed manually by package id. The difference is automation: `snapshot` packages are never deployed automatically, while the daily scheduled `release` package is deployed automatically after build gates pass.
 
 The backend install uses `npm ci --omit=dev --ignore-scripts` on ECS. This avoids native postinstall downloads that can hang in the server environment while keeping the API, PostgreSQL persistence, and fallback embedding behavior available.
 
@@ -102,14 +121,51 @@ PINECONE_ENVIRONMENT=
 
 1. Configure ECS with `deploy/setup-ecs.sh`.
 2. Add GitHub Secrets.
-3. Push to `main` and wait for `Build Package`.
+3. Push to `main` and wait for `Build Package` to create a `snapshot` package, or manually run `Build Package` to create a `release` package.
 4. Copy the package id from the workflow summary or artifact name.
 5. Run `Deploy Package` manually with that package id.
 
 Daily noon deployment runs automatically after the first successful setup.
 
+## Branch Protection
+
+Configure GitHub branch protection for `main`:
+
+1. Open `Settings` -> `Branches`.
+2. Add a branch protection rule for `main`.
+3. Enable `Require status checks to pass before merging`.
+4. Select the `Test, lint, build, and package` check from `Build Package`.
+5. Enable `Require branches to be up to date before merging` if you want PRs rebased or merged with the latest `main` before approval.
+
+With that rule, a pull request cannot merge when unit tests, global coverage, incremental coverage, lint, build, package assembly, or package smoke testing fails.
+
+## Manual Operations
+
+### Create a Snapshot Package
+
+Open a pull request to `main`, or push to `main`. `Build Package` creates a package named like:
+
+```text
+ai-note-keeper-snapshot-42-a1b2c3d
+```
+
+This package can be deployed manually through `Deploy Package`, but it will not deploy automatically.
+
+### Create a Release Package
+
+Open GitHub Actions, choose `Build Package`, and run it manually. The workflow creates a package named like:
+
+```text
+ai-note-keeper-release-42-a1b2c3d
+```
+
+Manual release packaging does not deploy automatically. Copy the package id and run `Deploy Package`.
+
+### Daily Release Deployment
+
+At `12:00 Asia/Shanghai`, GitHub runs `Build Package` on the schedule. This creates a `release` package. If every gate passes, the same workflow deploys that release package automatically.
+
 ## Notes
 
-- The repository currently has no explicit `test` script in `frontend/package.json` or `backend/package.json`. The workflow uses `npm test --if-present`, so real unit tests will run automatically after test scripts are added.
 - Lint is strict and runs before build.
 - The deploy keeps release directories under `/opt/ai-note-keeper/releases`. Clean old releases manually if disk space becomes tight.
