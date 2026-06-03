@@ -6,6 +6,20 @@ import { EmbeddingConfigModel } from '../models/EmbeddingConfig';
 import pool from '../config/database';
 
 const PLACEHOLDER_PATTERNS = ['your_', '_here', 'xxx', 'placeholder', 'changeme', 'change_me', 'example', 'sk-placeholder'];
+const DEFAULT_CHROMA_URL = 'http://localhost:8000';
+
+export function resolveChromaUrl(env: Partial<Record<'CHROMA_URL', string>> = process.env): string {
+  return (env.CHROMA_URL || DEFAULT_CHROMA_URL).replace(/\/+$/, '');
+}
+
+export function resolveChromaClientArgs(chromaUrl: string): { host: string; port: number; ssl: boolean } {
+  const url = new URL(chromaUrl);
+  return {
+    host: url.hostname,
+    port: Number(url.port || (url.protocol === 'https:' ? 443 : 80)),
+    ssl: url.protocol === 'https:',
+  };
+}
 
 function isPlaceholderApiKey(apiKey: string): boolean {
   if (!apiKey || apiKey.trim().length < 10) return true;
@@ -27,16 +41,20 @@ class EmbeddingService {
   private embeddingFunction: DefaultEmbeddingFunction | EmbeddingFunction | null = null;
   private initialized = false;
   private currentEmbeddingProvider: string = 'qwen';
+  private chromaUrl = resolveChromaUrl();
 
   constructor() {
     this.initChroma();
-    this.initOpenAI();
+    this.initOpenAI().catch((error) => {
+      console.warn('Embedding provider initialization failed:', error);
+      this.initialized = true;
+    });
   }
 
   private async initChroma() {
     try {
-      this.client = new ChromaClient({ path: 'http://localhost:8000' });
-      console.log('ChromaDB client initialized');
+      this.client = new ChromaClient(resolveChromaClientArgs(this.chromaUrl));
+      console.log(`ChromaDB client initialized at ${this.chromaUrl}`);
     } catch (error) {
       console.warn('ChromaDB initialization failed, using fallback:', error);
       this.client = null;
@@ -250,6 +268,48 @@ class EmbeddingService {
     } catch (error) {
       console.error('Failed to get/create ChromaDB collection:', error);
       return null;
+    }
+  }
+
+  async getVectorStoreStatus(): Promise<{ status: 'ok' | 'down'; message: string; url: string }> {
+    if (!this.client) {
+      return {
+        status: 'down',
+        message: 'ChromaDB client is not initialized',
+        url: this.chromaUrl,
+      };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      try {
+        const response = await fetch(`${this.chromaUrl}/api/v2/heartbeat`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return {
+            status: 'down',
+            message: `ChromaDB heartbeat returned HTTP ${response.status}`,
+            url: this.chromaUrl,
+          };
+        }
+
+        return {
+          status: 'ok',
+          message: 'ChromaDB heartbeat responded',
+          url: this.chromaUrl,
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error: any) {
+      return {
+        status: 'down',
+        message: error?.name === 'AbortError' ? 'ChromaDB heartbeat timed out' : 'ChromaDB heartbeat failed',
+        url: this.chromaUrl,
+      };
     }
   }
 

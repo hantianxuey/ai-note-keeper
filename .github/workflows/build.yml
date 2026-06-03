@@ -23,8 +23,11 @@ env:
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
   VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://8.136.39.247/api' }}
   DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ainotes
+  CHROMA_URL: http://127.0.0.1:8000
   JWT_SECRET: ci-smoke-test-secret
   INCREMENTAL_COVERAGE_THRESHOLD: "60"
+  RELEASES_TO_KEEP: "5"
+  LOG_RETENTION_DAYS: "14"
 
 jobs:
   build:
@@ -44,6 +47,10 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      chromadb:
+        image: ghcr.io/chroma-core/chroma:latest
+        ports:
+          - 8000:8000
     outputs:
       package_id: ${{ steps.package-meta.outputs.package_id }}
 
@@ -81,6 +88,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
 
       - name: Run frontend unit tests with coverage
         working-directory: frontend
@@ -140,6 +151,33 @@ jobs:
       - name: Build backend
         working-directory: backend
         run: npm run build
+
+      - name: Run E2E critical path
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NODE_ENV=production PORT=3100 DATABASE_URL="${DATABASE_URL}" CHROMA_URL="${CHROMA_URL}" node backend/dist/server.js > e2e-backend.log 2>&1 &
+          backend_pid=$!
+          VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
+          frontend_pid=$!
+          trap 'kill "${backend_pid}" "${frontend_pid}" 2>/dev/null || true' EXIT
+
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health/live >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173 >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          E2E_BASE_URL=http://127.0.0.1:4173 npm --prefix frontend run test:e2e
 
       - name: Assemble release package
         shell: bash
@@ -247,7 +285,7 @@ jobs:
 
           scp "${package_file}" "${ECS_USER}@${ECS_HOST}:${remote_package}"
           ssh "${ECS_USER}@${ECS_HOST}" \
-            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' bash -s" <<'EOF'
+            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' RELEASES_TO_KEEP='${RELEASES_TO_KEEP}' LOG_RETENTION_DAYS='${LOG_RETENTION_DAYS}' bash -s" <<'EOF'
           set -euo pipefail
 
           release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
@@ -278,4 +316,14 @@ jobs:
             nginx -t
             nginx -s reload
           fi
+
+          keep="${RELEASES_TO_KEEP:-5}"
+          find "${APP_PATH}/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+            | sort -rn \
+            | awk -v keep="${keep}" 'NR > keep { print substr($0, index($0, $2)) }' \
+            | while IFS= read -r old_release; do
+                rm -rf "${old_release}"
+              done
+
+          find "${APP_PATH}/shared/logs" -type f -mtime +"${LOG_RETENTION_DAYS:-14}" -delete 2>/dev/null || true
           EOF

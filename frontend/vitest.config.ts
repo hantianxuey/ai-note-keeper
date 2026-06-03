@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary'],
@@ -12,6 +13,7 @@ export default defineConfig({
         'src/main.tsx',
         'src/**/*.d.ts',
         'src/i18n/locales/**',
+        'e2e/**',
       ],
       thresholds: {
         branches: 50,

@@ -3,22 +3,20 @@ import express from 'express';
 import cors from 'cors';
 import { errorHandler, AppError } from './middleware/errorHandler';
 import { vectorSearchService } from './services/vectorSearchService';
+import { createReadinessSnapshot } from './services/healthService';
+import { getAllowedOrigins, isOriginAllowed } from './config/cors';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const allowedOrigins = [
-  'http://localhost:3001',
-  'http://localhost:5173',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
+const allowedOrigins = getAllowedOrigins();
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isOriginAllowed(origin, allowedOrigins)) {
       callback(null, true);
     } else {
-      callback(null, true);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -28,6 +26,19 @@ app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'AI Note Keeper API is running' });
+});
+
+app.get('/health/live', (req, res) => {
+  res.json({ status: 'ok', message: 'AI Note Keeper API is running' });
+});
+
+app.get('/health/ready', async (req, res, next) => {
+  try {
+    const snapshot = await createReadinessSnapshot();
+    res.status(snapshot.httpStatus).json(snapshot.body);
+  } catch (error) {
+    next(error);
+  }
 });
 
 import authRoutes from './routes/auth';

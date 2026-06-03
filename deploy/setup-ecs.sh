@@ -10,6 +10,7 @@ SERVER_NAME="${SERVER_NAME:-8.136.39.247}"
 NODE_VERSION="${NODE_VERSION:-20}"
 APP_USER="${APP_USER:-root}"
 NGINX_SITE_FILE="/etc/nginx/conf.d/ai-note-keeper.conf"
+LOGROTATE_FILE="/etc/logrotate.d/ai-note-keeper"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run this script as root or with sudo."
@@ -84,6 +85,15 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    location /health/ready {
+        proxy_pass http://127.0.0.1:3000/health/ready;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
@@ -98,6 +108,29 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
+echo "==> Writing logrotate policy"
+cat > "${LOGROTATE_FILE}" <<EOF
+${APP_PATH}/shared/logs/*.log /var/log/nginx/ai-note-keeper.*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    maxsize 50M
+    create 0640 ${APP_USER} ${APP_USER}
+    sharedscripts
+    postrotate
+        if command -v nginx >/dev/null 2>&1; then
+            nginx -s reload >/dev/null 2>&1 || true
+        fi
+        if command -v pm2 >/dev/null 2>&1; then
+            pm2 reloadLogs >/dev/null 2>&1 || true
+        fi
+    endscript
+}
+EOF
+
 echo "==> Enabling SSH service"
 systemctl enable sshd
 systemctl restart sshd
@@ -111,6 +144,7 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ainotes
 JWT_SECRET=change-me-before-first-deploy
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
+CHROMA_URL=http://127.0.0.1:8000
 EOF
   chown "${APP_USER}:${APP_USER}" "${APP_PATH}/backend/.env"
 fi

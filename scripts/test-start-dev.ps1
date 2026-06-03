@@ -11,6 +11,8 @@ $content = Get-Content -LiteralPath $scriptPath -Raw
 $requiredSnippets = @(
   'docker compose up -d',
   'pg_isready',
+  'Wait-ForChroma',
+  'CHROMA_URL',
   'backend/src/config/init.sql',
   'backend\.env.example',
   'frontend\.env.example',

@@ -67,6 +67,22 @@ function Wait-ForPostgres {
   throw 'PostgreSQL did not become ready in time.'
 }
 
+function Wait-ForChroma {
+  $maxAttempts = 30
+
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      Invoke-WebRequest -Uri 'http://127.0.0.1:8000/api/v2/heartbeat' -UseBasicParsing -TimeoutSec 2 | Out-Null
+      return
+    } catch {
+      Write-Host "Waiting for ChromaDB ($attempt/$maxAttempts)..."
+      Start-Sleep -Seconds 2
+    }
+  }
+
+  Write-Host 'ChromaDB did not become ready in time. The app can still run with keyword-search fallback.'
+}
+
 Require-Command docker
 Require-Command npm
 
@@ -86,6 +102,7 @@ Write-Host 'Starting PostgreSQL...'
 docker compose up -d
 
 Wait-ForPostgres
+Wait-ForChroma
 
 $initSql = Join-Path $Root 'backend/src/config/init.sql'
 Write-Host 'Initializing database schema...'
@@ -98,6 +115,7 @@ Start-DevWindow `
   -Commands @(
     "`$env:PORT = '$BackendPort'",
     "`$env:FRONTEND_URL = 'http://localhost:$FrontendPort'",
+    "`$env:CHROMA_URL = 'http://localhost:8000'",
     'npm install',
     'npm run dev'
   )

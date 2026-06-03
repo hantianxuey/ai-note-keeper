@@ -16,6 +16,8 @@ env:
   ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
   ECS_USER: ${{ secrets.ECS_USER || 'root' }}
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
+  RELEASES_TO_KEEP: "5"
+  LOG_RETENTION_DAYS: "14"
 
 jobs:
   deploy:
@@ -73,7 +75,7 @@ jobs:
 
           scp "${package_file}" "${ECS_USER}@${ECS_HOST}:${remote_package}"
           ssh "${ECS_USER}@${ECS_HOST}" \
-            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' bash -s" <<'EOF'
+            "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' RELEASES_TO_KEEP='${RELEASES_TO_KEEP}' LOG_RETENTION_DAYS='${LOG_RETENTION_DAYS}' bash -s" <<'EOF'
           set -euo pipefail
 
           release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
@@ -104,4 +106,14 @@ jobs:
             nginx -t
             nginx -s reload
           fi
+
+          keep="${RELEASES_TO_KEEP:-5}"
+          find "${APP_PATH}/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+            | sort -rn \
+            | awk -v keep="${keep}" 'NR > keep { print substr($0, index($0, $2)) }' \
+            | while IFS= read -r old_release; do
+                rm -rf "${old_release}"
+              done
+
+          find "${APP_PATH}/shared/logs" -type f -mtime +"${LOG_RETENTION_DAYS:-14}" -delete 2>/dev/null || true
           EOF

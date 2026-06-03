@@ -31,6 +31,7 @@ Build gates:
 - Backend incremental coverage: `npm run test:coverage:incremental`.
 - Backend lint: `npm run lint`.
 - Backend production build: `npm run build`.
+- E2E critical path: register a user, create a note, search it, and ask the RAG chat through Playwright.
 - Release package smoke test: install production backend dependencies from the generated package, start `node dist/server.js`, and verify `/health`.
 
 Coverage gates:
@@ -140,6 +141,12 @@ Configure GitHub branch protection for `main`:
 With that rule, a pull request cannot merge when unit tests, global coverage, incremental coverage, lint, build, package assembly, or package smoke testing fails.
 
 ## Manual Operations
+
+### Storage Cleanup
+
+Each deployment keeps only the newest 5 release directories under `/opt/ai-note-keeper/releases` by default. It also deletes shared backend logs older than 14 days. Change `RELEASES_TO_KEEP` or `LOG_RETENTION_DAYS` in the workflow environment if the server disk budget changes.
+
+`deploy/setup-ecs.sh` installs a logrotate policy for PM2 logs in `/opt/ai-note-keeper/shared/logs` and Nginx logs in `/var/log/nginx/ai-note-keeper.*.log`.
 
 ### Create a Snapshot Package
 
