@@ -1,167 +1,113 @@
-import { Response, NextFunction } from 'express';
 import { NoteModel } from '../models/Note';
 import { vectorSearchService } from '../services/vectorSearchService';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import {
+  asyncHandler,
+  parseIdParam,
+  requireFields,
+  requireUserId,
+} from './controllerUtils';
 
-export const listNotes = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
+const notePayload = (body: AuthRequest['body']) => ({
+  title: body.title,
+  content: body.content,
+  markdownContent: body.markdownContent || null,
+  tags: body.tags || null,
+  category: body.category || null,
+});
+
+const indexInBackground = (
+  noteId: number,
+  userId: number,
+  title: string,
+  content: string
 ) => {
-  try {
-    const userId = req.userId!;
-    const notes = await NoteModel.findAllByUserId(userId);
-    res.json({ notes });
-  } catch (error) {
-    next(error);
-  }
+  vectorSearchService.indexNote(noteId, userId, title, content).catch((err) => {
+    console.error('Background indexing failed:', err);
+  });
 };
 
-export const getNote = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req.userId!;
-    const noteId = parseInt(req.params.id);
+export const listNotes = asyncHandler(async (req: AuthRequest, res) => {
+  const notes = await NoteModel.findAllByUserId(requireUserId(req));
+  res.json({ notes });
+});
 
-    if (isNaN(noteId)) {
-      return next(new AppError('Invalid note ID', 400));
-    }
+export const getNote = asyncHandler(async (req: AuthRequest, res) => {
+  const note = await NoteModel.findById(parseIdParam(req, 'id', 'note ID'), requireUserId(req));
 
-    const note = await NoteModel.findById(noteId, userId);
-
-    if (!note) {
-      return next(new AppError('Note not found', 404));
-    }
-
-    res.json({ note });
-  } catch (error) {
-    next(error);
+  if (!note) {
+    throw new AppError('Note not found', 404);
   }
-};
 
-export const createNote = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req.userId!;
-    const { title, content, markdownContent, tags, category } = req.body;
+  res.json({ note });
+});
 
-    if (!title || !content) {
-      return next(new AppError('Title and content are required', 400));
-    }
+export const createNote = asyncHandler(async (req: AuthRequest, res) => {
+  const userId = requireUserId(req);
+  requireFields(req.body, ['title', 'content'], 'Title and content are required');
 
-    const note = await NoteModel.create(
-      userId,
-      title,
-      content,
-      markdownContent || null,
-      tags || null,
-      category || null
-    );
+  const payload = notePayload(req.body);
+  const note = await NoteModel.create(
+    userId,
+    payload.title,
+    payload.content,
+    payload.markdownContent,
+    payload.tags,
+    payload.category
+  );
 
-    vectorSearchService.indexNote(note.id, userId, title, content).catch((err) => {
-      console.error('Background indexing failed:', err);
-    });
+  indexInBackground(note.id, userId, payload.title, payload.content);
+  res.status(201).json({ note });
+});
 
-    res.status(201).json({ note });
-  } catch (error) {
-    next(error);
+export const updateNote = asyncHandler(async (req: AuthRequest, res) => {
+  const userId = requireUserId(req);
+  const noteId = parseIdParam(req, 'id', 'note ID');
+  requireFields(req.body, ['title', 'content'], 'Title and content are required');
+
+  const payload = notePayload(req.body);
+  const note = await NoteModel.update(
+    noteId,
+    userId,
+    payload.title,
+    payload.content,
+    payload.markdownContent,
+    payload.tags,
+    payload.category
+  );
+
+  if (!note) {
+    throw new AppError('Note not found', 404);
   }
-};
 
-export const updateNote = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req.userId!;
-    const noteId = parseInt(req.params.id);
-    const { title, content, markdownContent, tags, category } = req.body;
+  indexInBackground(noteId, userId, payload.title, payload.content);
+  res.json({ note });
+});
 
-    if (isNaN(noteId)) {
-      return next(new AppError('Invalid note ID', 400));
-    }
+export const deleteNote = asyncHandler(async (req: AuthRequest, res) => {
+  const userId = requireUserId(req);
+  const noteId = parseIdParam(req, 'id', 'note ID');
+  const deleted = await NoteModel.delete(noteId, userId);
 
-    if (!title || !content) {
-      return next(new AppError('Title and content are required', 400));
-    }
-
-    const note = await NoteModel.update(
-      noteId,
-      userId,
-      title,
-      content,
-      markdownContent || null,
-      tags || null,
-      category || null
-    );
-
-    if (!note) {
-      return next(new AppError('Note not found', 404));
-    }
-
-    vectorSearchService.indexNote(noteId, userId, title, content).catch((err) => {
-      console.error('Background indexing failed:', err);
-    });
-
-    res.json({ note });
-  } catch (error) {
-    next(error);
+  if (!deleted) {
+    throw new AppError('Note not found', 404);
   }
-};
 
-export const deleteNote = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req.userId!;
-    const noteId = parseInt(req.params.id);
+  vectorSearchService.removeNoteIndex(noteId, userId).catch((err) => {
+    console.error('Background index removal failed:', err);
+  });
+  res.status(204).end();
+});
 
-    if (isNaN(noteId)) {
-      return next(new AppError('Invalid note ID', 400));
-    }
+export const searchNotes = asyncHandler(async (req: AuthRequest, res) => {
+  const query = req.query.q as string;
 
-    const deleted = await NoteModel.delete(noteId, userId);
-
-    if (!deleted) {
-      return next(new AppError('Note not found', 404));
-    }
-
-    vectorSearchService.removeNoteIndex(noteId, userId).catch((err) => {
-      console.error('Background index removal failed:', err);
-    });
-
-    res.status(204).end();
-  } catch (error) {
-    next(error);
+  if (!query) {
+    res.json({ results: [] });
+    return;
   }
-};
 
-export const searchNotes = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req.userId!;
-    const query = req.query.q as string;
-
-    if (!query) {
-      return res.json({ results: [] });
-    }
-
-    const results = await NoteModel.search(userId, query);
-    res.json({ results });
-  } catch (error) {
-    next(error);
-  }
-};
+  const results = await NoteModel.search(requireUserId(req), query);
+  res.json({ results });
+});

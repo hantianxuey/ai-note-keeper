@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError, errorHandler } from './errorHandler';
+
+beforeEach(() => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+});
 
 describe('AppError', () => {
   it('stores the message, status code, and class name', () => {
