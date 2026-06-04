@@ -23,4 +23,13 @@ describe('getAllowedOrigins', () => {
   it('includes the Playwright and Vite preview frontend origin', () => {
     expect(getAllowedOrigins({})).toContain('http://127.0.0.1:4173');
   });
+
+  it('includes comma-separated configured origins', () => {
+    expect(getAllowedOrigins({
+      CORS_ALLOWED_ORIGINS: 'https://notes.example.com, https://www.notes.example.com',
+    })).toEqual(expect.arrayContaining([
+      'https://notes.example.com',
+      'https://www.notes.example.com',
+    ]));
+  });
 });

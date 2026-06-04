@@ -9,8 +9,13 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:4173',
 ];
 
-export function getAllowedOrigins(env: Partial<Record<'FRONTEND_URL', string>> = process.env): string[] {
-  return [...DEFAULT_ALLOWED_ORIGINS, env.FRONTEND_URL].filter(Boolean) as string[];
+export function getAllowedOrigins(env: Partial<Record<'FRONTEND_URL' | 'CORS_ALLOWED_ORIGINS', string>> = process.env): string[] {
+  const configuredOrigins = (env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return [...DEFAULT_ALLOWED_ORIGINS, env.FRONTEND_URL, ...configuredOrigins].filter(Boolean) as string[];
 }
 
 export function isOriginAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {

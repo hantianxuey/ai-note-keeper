@@ -14,6 +14,8 @@ test('user can create, search, and ask over a note', async ({ page }) => {
 
   await page.goto('/register');
   await page.locator('#email').fill(email);
+  await page.getByRole('button', { name: 'Send Code' }).click();
+  await expect(page.getByText(/Dev verification code:/)).toBeVisible();
   await page.locator('#password').fill(password);
   await page.locator('#confirmPassword').fill(password);
   await page.getByRole('button', { name: 'Register' }).click();

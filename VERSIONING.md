@@ -48,6 +48,15 @@ AI Note Keeper uses semantic versioning for code releases.
 - Prometheus-compatible HTTP metrics are available at `/metrics`.
 - Deployments run a post-switch readiness smoke test and automatically roll back symlinks to the previous release when it fails.
 
+`1.8.0` is a minor release focused on application security:
+
+- Registration requires one-time email verification codes backed by versioned database migrations.
+- Password and API-key submission paths use frontend RSA-OAEP encryption before posting sensitive fields.
+- Production email verification is SMTP-backed, with dev-code exposure limited to local and CI use.
+- CORS supports explicit multi-origin production allowlists.
+- Cloudflare Full (strict) Nginx template and origin-certificate paths are documented.
+- CI scans tracked files for common secret patterns before packaging.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.

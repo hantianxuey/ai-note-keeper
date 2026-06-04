@@ -85,6 +85,9 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
 
+      - name: Scan tracked files for secrets
+        run: node scripts/security/scan-secrets.mjs
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -140,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          NODE_ENV=production PORT=3100 DATABASE_URL="${DATABASE_URL}" CHROMA_URL="${CHROMA_URL}" node backend/dist/server.js > e2e-backend.log 2>&1 &
+          NODE_ENV=production EMAIL_VERIFICATION_EXPOSE_DEV_CODE=true PORT=3100 DATABASE_URL="${DATABASE_URL}" CHROMA_URL="${CHROMA_URL}" node backend/dist/server.js > e2e-backend.log 2>&1 &
           backend_pid=$!
           VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
           frontend_pid=$!

@@ -94,11 +94,30 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const registerEvalUser = async (apiUrl: string) => {
   const email = `rag-eval-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  const publicKeyResponse = await requestJson<{ publicKey: string }>(`${apiUrl}/security/public-key`);
+  const encryptedPassword = crypto.publicEncrypt(
+    {
+      key: publicKeyResponse.publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256',
+    },
+    Buffer.from('rag-eval-password', 'utf8')
+  ).toString('base64');
+  const verificationResponse = await requestJson<{ devCode?: string }>(`${apiUrl}/auth/verification-code`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+
+  if (!verificationResponse.devCode) {
+    throw new Error('RAG eval requires dev verification codes in non-production CI');
+  }
+
   const response = await requestJson<{ token: string }>(`${apiUrl}/auth/register`, {
     method: 'POST',
     body: JSON.stringify({
       email,
-      password: 'rag-eval-password',
+      encryptedPassword,
+      verificationCode: verificationResponse.devCode,
     }),
   });
 
@@ -194,3 +213,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+import crypto from 'crypto';

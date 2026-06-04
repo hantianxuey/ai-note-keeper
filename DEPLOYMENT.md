@@ -107,11 +107,20 @@ PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ainotes
 JWT_SECRET=replace-with-a-strong-secret
 API_KEY_ENCRYPTION_SECRET=replace-with-a-different-strong-secret
+EMAIL_VERIFICATION_SECRET=replace-with-a-third-strong-secret
+REQUEST_ENCRYPTION_PRIVATE_KEY=
 REQUEST_BODY_LIMIT=1mb
 AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
 TRUST_PROXY=true
 LOG_LEVEL=info
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=replace-with-smtp-user
+SMTP_PASS=replace-with-smtp-password
+SMTP_FROM=no-reply@example.com
+CORS_ALLOWED_ORIGINS=https://your-domain.example
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
 ```
@@ -143,7 +152,51 @@ Deployments run `npm run migrate` after production dependencies are installed an
 
 `API_KEY_ENCRYPTION_SECRET` encrypts API keys saved through Settings. Keep it stable across deployments; changing it without re-encrypting stored keys prevents encrypted keys from being read.
 
+`EMAIL_VERIFICATION_SECRET` signs one-time registration verification codes. Keep it stable long enough for active codes to expire.
+
+`REQUEST_ENCRYPTION_PRIVATE_KEY` is optional. If omitted, the backend generates an ephemeral RSA key on startup and the frontend fetches the matching public key from `/api/security/public-key`. For stable key rotation, set a PEM private key in ECS `.env` with escaped newlines.
+
 `TRUST_PROXY=true` is recommended on ECS because Nginx forwards client IP information to Express. Authentication rate limits are controlled by `AUTH_RATE_LIMIT_WINDOW_MS` and `AUTH_RATE_LIMIT_MAX`.
+
+Registration requires an email verification code. In production, SMTP must be configured. `EMAIL_VERIFICATION_EXPOSE_DEV_CODE=true` is only for CI or local smoke tests.
+
+Run secret scans before pushing:
+
+```bash
+node scripts/security/scan-secrets.mjs
+node scripts/security/scan-secrets.mjs --history
+```
+
+The CI build scans tracked files. If history scanning finds a real leaked key, rotate the key first, then rewrite repository history with a dedicated cleanup branch.
+
+## Cloudflare
+
+Cloudflare should use `Full (strict)` SSL/TLS mode for this application. Do not use `Flexible`, because it leaves the Cloudflare-to-origin hop on HTTP.
+
+Server certificate layout expected by `deploy/nginx.cloudflare.conf`:
+
+```text
+/etc/nginx/cert/ai-note-keeper-origin.pem
+/etc/nginx/cert/ai-note-keeper-origin.key
+```
+
+If your uploaded files use different names, create symlinks to those names. Then install the Cloudflare Nginx config:
+
+```bash
+sudo install -m 0644 deploy/nginx.cloudflare.conf /etc/nginx/conf.d/ai-note-keeper.conf
+sudo nginx -t
+sudo nginx -s reload
+```
+
+Cloudflare dashboard baseline:
+
+- DNS record for the app domain points to ECS and is proxied.
+- SSL/TLS mode is `Full (strict)`.
+- Always Use HTTPS is enabled.
+- HSTS is enabled after confirming HTTPS works end to end.
+- WAF managed rules are enabled.
+- Add rate limiting for `/api/auth/*`.
+- Cache static frontend assets, bypass cache for `/api/*`, `/health*`, and `/metrics`.
 
 ## Observability
 

@@ -137,12 +137,16 @@ systemctl restart sshd
 
 echo "==> Creating backend .env example if missing"
 if [ ! -f "${APP_PATH}/backend/.env" ]; then
-  cat > "${APP_PATH}/backend/.env" <<'EOF'
+  JWT_SECRET_VALUE="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  API_KEY_ENCRYPTION_SECRET_VALUE="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  EMAIL_VERIFICATION_SECRET_VALUE="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  cat > "${APP_PATH}/backend/.env" <<EOF
 NODE_ENV=production
 PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ainotes
-JWT_SECRET=change-me-before-first-deploy
-API_KEY_ENCRYPTION_SECRET=change-me-before-first-deploy
+JWT_SECRET=${JWT_SECRET_VALUE}
+API_KEY_ENCRYPTION_SECRET=${API_KEY_ENCRYPTION_SECRET_VALUE}
+EMAIL_VERIFICATION_SECRET=${EMAIL_VERIFICATION_SECRET_VALUE}
 REQUEST_BODY_LIMIT=1mb
 AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
@@ -150,6 +154,12 @@ TRUST_PROXY=true
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
 CHROMA_URL=http://127.0.0.1:8000
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 EOF
   chown "${APP_USER}:${APP_USER}" "${APP_PATH}/backend/.env"
 fi

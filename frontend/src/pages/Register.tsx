@@ -10,10 +10,37 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [devCode, setDevCode] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
+
+  const handleSendCode = async () => {
+    setError('');
+    setDevCode('');
+
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const response = await authAPI.sendVerificationCode(email.trim());
+      if (response.data.devCode) {
+        setDevCode(response.data.devCode);
+        setVerificationCode(response.data.devCode);
+      }
+    } catch (err: any) {
+      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || 'Failed to send verification code';
+      setError(message);
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,10 +56,15 @@ export default function Register() {
       return;
     }
 
+    if (!verificationCode.trim()) {
+      setError('Verification code is required');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await authAPI.register({ email, password });
+      const response = await authAPI.register({ email, password, verificationCode: verificationCode.trim() });
       setAuth(response.data.user, response.data.token);
       navigate('/');
     } catch (err: any) {
@@ -148,6 +180,37 @@ export default function Register() {
                   placeholder={t('passwordPlaceholder')}
                   required
                 />
+              </div>
+
+              <div>
+                <label htmlFor="verificationCode" className="mb-1.5 block text-sm font-semibold">
+                  Verification Code
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="verificationCode"
+                    type="text"
+                    inputMode="numeric"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    className="input-field flex-1"
+                    placeholder="123456"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={isSendingCode || !email.trim()}
+                    className="btn-secondary whitespace-nowrap px-3"
+                  >
+                    {isSendingCode ? 'Sending...' : 'Send Code'}
+                  </button>
+                </div>
+                {devCode && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Dev verification code: {devCode}
+                  </p>
+                )}
               </div>
 
               {error && (

@@ -4,6 +4,7 @@ import { EmbeddingConfigModel } from '../models/EmbeddingConfig';
 import { EMBEDDING_PROVIDERS } from '../types/llm';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { readSensitiveField } from '../config/requestEncryption';
 
 export const getEmbeddingProviders = async (
   req: AuthRequest,
@@ -76,7 +77,8 @@ export const saveEmbeddingApiKey = async (
   next: NextFunction
 ) => {
   try {
-    const { provider, apiKey } = req.body;
+    const { provider } = req.body;
+    const apiKey = readSensitiveField(req.body, 'apiKey');
 
     if (!provider || !apiKey) {
       return next(new AppError('Provider and apiKey are required', 400));

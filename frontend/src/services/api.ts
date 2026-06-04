@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { AskResponse, Conversation, Note, User } from '../types';
+import { encryptWithPublicKey } from '../utils/requestEncryption';
 
 const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -76,6 +77,28 @@ interface LLMConfig {
   model: string;
 }
 
+let publicEncryptionKey: string | null = null;
+
+const getPublicEncryptionKey = async () => {
+  if (publicEncryptionKey) {
+    return publicEncryptionKey;
+  }
+
+  const response = await api.get<{ publicKey: string }>('/security/public-key');
+  publicEncryptionKey = response.data.publicKey;
+  return publicEncryptionKey;
+};
+
+const encryptedField = async (fieldName: string, value: string) => {
+  const publicKey = await getPublicEncryptionKey();
+  const encryptedValue = await encryptWithPublicKey(value, publicKey);
+  const encryptedName = `encrypted${fieldName.charAt(0).toUpperCase()}${fieldName.slice(1)}`;
+
+  return {
+    [encryptedName]: encryptedValue,
+  };
+};
+
 const getLLMConfig = (): LLMConfig => {
   return {
     provider: localStorage.getItem('llm_provider') || 'demo',
@@ -84,8 +107,19 @@ const getLLMConfig = (): LLMConfig => {
 };
 
 export const authAPI = {
-  login: (data: { email: string; password: string }) => api.post<{ user: User; token: string }>('/auth/login', data),
-  register: (data: { email: string; password: string }) => api.post<{ user: User; token: string }>('/auth/register', data),
+  sendVerificationCode: (email: string) =>
+    api.post<{ message: string; devCode?: string }>('/auth/verification-code', { email }),
+  login: async (data: { email: string; password: string }) =>
+    api.post<{ user: User; token: string }>('/auth/login', {
+      email: data.email,
+      ...(await encryptedField('password', data.password)),
+    }),
+  register: async (data: { email: string; password: string; verificationCode: string }) =>
+    api.post<{ user: User; token: string }>('/auth/register', {
+      email: data.email,
+      verificationCode: data.verificationCode,
+      ...(await encryptedField('password', data.password)),
+    }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get<{ user: User }>('/auth/me'),
 };
@@ -110,8 +144,11 @@ export const llmAPI = {
   rewriteNote: (content: string, instruction?: string, provider?: string, model?: string) =>
     api.post<{ rewritten: string }>('/llm/rewrite', { content, instruction, provider, model }),
   getApiKeys: () => api.get<{ keys: ApiKeyInfo[] }>('/llm/keys'),
-  saveApiKey: (provider: string, apiKey: string) =>
-    api.post<{ success: boolean; message: string }>('/llm/keys', { provider, apiKey }),
+  saveApiKey: async (provider: string, apiKey: string) =>
+    api.post<{ success: boolean; message: string }>('/llm/keys', {
+      provider,
+      ...(await encryptedField('apiKey', apiKey)),
+    }),
   deleteApiKey: (provider: string) =>
     api.delete<{ success: boolean; message: string }>('/llm/keys/' + provider),
 };
@@ -121,8 +158,11 @@ export const embeddingAPI = {
   getModels: () => api.get<{ models: EmbeddingModel[] }>('/embedding/models'),
   testConnection: (provider: string, model: string) => api.post('/embedding/test', { provider, model }),
   getApiKeys: () => api.get<{ keys: ApiKeyInfo[] }>('/embedding/keys'),
-  saveApiKey: (provider: string, apiKey: string) =>
-    api.post<{ success: boolean; message: string }>('/embedding/keys', { provider, apiKey }),
+  saveApiKey: async (provider: string, apiKey: string) =>
+    api.post<{ success: boolean; message: string }>('/embedding/keys', {
+      provider,
+      ...(await encryptedField('apiKey', apiKey)),
+    }),
   deleteApiKey: (provider: string) =>
     api.delete<{ success: boolean; message: string }>('/embedding/keys/' + provider),
 };

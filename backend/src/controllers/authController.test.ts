@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
-import { login, me, register } from './authController';
+import { emailVerificationService } from '../services/emailVerificationService';
+import { login, me, register, sendVerificationCode } from './authController';
 
 vi.mock('bcryptjs', () => ({
   default: {
@@ -22,6 +23,13 @@ vi.mock('../models/User', () => ({
     create: vi.fn(),
     findByEmail: vi.fn(),
     findById: vi.fn(),
+  },
+}));
+
+vi.mock('../services/emailVerificationService', () => ({
+  emailVerificationService: {
+    createAndSend: vi.fn(),
+    verify: vi.fn(),
   },
 }));
 
@@ -48,9 +56,10 @@ describe('authController', () => {
     const res = response();
 
     await register({
-      body: { email: 'a@example.com', password: 'secret1' },
+      body: { email: 'a@example.com', password: 'secret1', verificationCode: '123456' },
     } as any, res as any, vi.fn());
 
+    expect(emailVerificationService.verify).toHaveBeenCalledWith('a@example.com', '123456');
     expect(UserModel.create).toHaveBeenCalledWith('a@example.com', 'hash');
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({
@@ -64,10 +73,36 @@ describe('authController', () => {
     vi.mocked(UserModel.findByEmail).mockResolvedValue({ id: 1 } as any);
 
     await register({
-      body: { email: 'a@example.com', password: 'secret1' },
+      body: { email: 'a@example.com', password: 'secret1', verificationCode: '123456' },
     } as any, response() as any, next);
 
     await vi.waitFor(() => expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 409 })));
+  });
+
+  it('rejects registration without a verification code', async () => {
+    const next = vi.fn();
+
+    await register({
+      body: { email: 'a@example.com', password: 'secret1' },
+    } as any, response() as any, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 })));
+  });
+
+  it('sends a verification code for new emails', async () => {
+    vi.mocked(UserModel.findByEmail).mockResolvedValue(null);
+    vi.mocked(emailVerificationService.createAndSend).mockResolvedValue({ devCode: '123456' });
+    const res = response();
+
+    await sendVerificationCode({
+      body: { email: 'a@example.com' },
+    } as any, res as any, vi.fn());
+
+    expect(emailVerificationService.createAndSend).toHaveBeenCalledWith('a@example.com');
+    expect(res.json).toHaveBeenCalledWith({
+      message: 'Verification code sent',
+      devCode: '123456',
+    });
   });
 
   it('logs in valid users', async () => {
