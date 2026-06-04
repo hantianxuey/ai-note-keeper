@@ -37,7 +37,7 @@ else
 fi
 
 echo "==> Installing system dependencies"
-"${PKG_MANAGER}" install -y ca-certificates curl gnupg2 nginx openssh-server tar gzip
+"${PKG_MANAGER}" install -y ca-certificates curl gnupg2 nginx openssh-server tar gzip podman
 
 echo "==> Installing Node.js ${NODE_VERSION}"
 if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q "^v${NODE_VERSION}\."; then
@@ -50,8 +50,34 @@ npm install -g pm2
 pm2 startup systemd -u "${APP_USER}" --hp "$(eval echo "~${APP_USER}")" || true
 
 echo "==> Creating application directories"
-mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs" "${APP_PATH}/backend"
+mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs" "${APP_PATH}/shared/chroma" "${APP_PATH}/backend"
 chown -R "${APP_USER}:${APP_USER}" "${APP_PATH}"
+
+echo "==> Writing ChromaDB service"
+cat > /etc/systemd/system/ai-note-keeper-chromadb.service <<EOF
+[Unit]
+Description=AI Note Keeper ChromaDB
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStartPre=-/usr/bin/podman rm -f ai-note-keeper-chromadb
+ExecStart=/usr/bin/podman run --rm \\
+  --name ai-note-keeper-chromadb \\
+  -p 127.0.0.1:8000:8000 \\
+  -v ${APP_PATH}/shared/chroma:/chroma/chroma:Z \\
+  ghcr.io/chroma-core/chroma:latest
+ExecStop=/usr/bin/podman stop ai-note-keeper-chromadb
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable ai-note-keeper-chromadb
+systemctl restart ai-note-keeper-chromadb
 
 echo "==> Writing Nginx site"
 cat > "${NGINX_SITE_FILE}" <<EOF

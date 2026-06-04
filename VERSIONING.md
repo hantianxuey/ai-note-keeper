@@ -65,6 +65,12 @@ AI Note Keeper uses semantic versioning for code releases.
 - Deleting a note also schedules cleanup for its uploaded image files to reduce long-term disk growth.
 - RAG indexing strips image markup so uploaded images are not interpreted as note text by AI workflows.
 
+`1.9.1` is a patch release focused on dependency and vector-store operations:
+
+- Removed the unused legacy `langchain` package to eliminate its vulnerable transitive dependency chain.
+- Production dependency audit now reports no backend runtime vulnerabilities.
+- ECS setup now provisions ChromaDB as a localhost-only Podman systemd service with persistent shared storage.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.
