@@ -41,10 +41,6 @@ describe('configuration models', () => {
   });
 
   it('manages embedding configs', async () => {
-    query.mockResolvedValueOnce({ rows: [] } as any);
-    await EmbeddingConfigModel.ensureTable();
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS embedding_configs'));
-
     query.mockResolvedValueOnce({ rows: [{ provider_key: 'qwen' }] } as any);
     await expect(EmbeddingConfigModel.findAll()).resolves.toEqual([{ provider_key: 'qwen' }]);
 

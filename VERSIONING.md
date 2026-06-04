@@ -25,6 +25,13 @@ AI Note Keeper uses semantic versioning for code releases.
 - Deployment cleans old release directories automatically.
 - PM2 and Nginx logs are rotated and old shared logs are cleaned.
 
+`1.5.0` is a minor release focused on database lifecycle management:
+
+- Database schema is managed by versioned SQL migrations in `backend/migrations`.
+- `npm run migrate` applies pending migrations through `schema_migrations`.
+- `npm run migrate:rollback` rolls back the latest migration for controlled recovery.
+- CI and deployment use the same migration entry point instead of ad hoc `init.sql` execution.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.

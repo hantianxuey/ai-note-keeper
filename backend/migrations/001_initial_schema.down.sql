@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS note_chunks;
+DROP TABLE IF EXISTS embedding_configs;
+DROP TABLE IF EXISTS llm_configs;
+DROP TABLE IF EXISTS conversations;
+DROP TABLE IF EXISTS notes;
+DROP TABLE IF EXISTS users;

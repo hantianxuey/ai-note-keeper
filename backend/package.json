@@ -1,11 +1,13 @@
 {
   "name": "ai-note-keeper-backend",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Backend for AI Note Keeper - RAG-based note knowledge base",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "migrate": "node dist/config/migrate.js up",
+    "migrate:rollback": "node dist/config/migrate.js down",
     "start": "node dist/server.js",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",

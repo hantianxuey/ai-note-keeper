@@ -31,6 +31,7 @@ Build gates:
 - Backend incremental coverage: `npm run test:coverage:incremental`.
 - Backend lint: `npm run lint`.
 - Backend production build: `npm run build`.
+- Backend database migrations: `npm run migrate`.
 - E2E critical path: register a user, create a note, search it, and ask the RAG chat through Playwright.
 - Release package smoke test: install production backend dependencies from the generated package, start `node dist/server.js`, and verify `/health`.
 
@@ -117,6 +118,17 @@ PINECONE_API_KEY=
 PINECONE_INDEX=
 PINECONE_ENVIRONMENT=
 ```
+
+## Database Migrations
+
+Schema changes are versioned under `backend/migrations` as paired `*.up.sql` and `*.down.sql` files. The backend package exposes:
+
+```bash
+npm run migrate
+npm run migrate:rollback
+```
+
+Deployments run `npm run migrate` after production dependencies are installed and before PM2 reloads the backend. Applied versions are recorded in the `schema_migrations` table.
 
 ## First Deployment
 

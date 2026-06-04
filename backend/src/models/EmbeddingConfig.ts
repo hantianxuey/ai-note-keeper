@@ -10,19 +10,6 @@ interface EmbeddingConfigRow {
 }
 
 export const EmbeddingConfigModel = {
-  async ensureTable(): Promise<void> {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS embedding_configs (
-        id SERIAL PRIMARY KEY,
-        provider_key VARCHAR(100) UNIQUE NOT NULL,
-        api_key TEXT NOT NULL,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-  },
-
   async findAll(): Promise<EmbeddingConfigRow[]> {
     const result = await pool.query(
       'SELECT id, provider_key, api_key, is_active, created_at, updated_at FROM embedding_configs ORDER BY provider_key'

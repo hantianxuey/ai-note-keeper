@@ -91,6 +91,7 @@ jobs:
           mkdir -p "${release_dir}/backend/logs"
           cd "${release_dir}/backend"
           npm ci --omit=dev --ignore-scripts
+          npm run migrate
 
           ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
           ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"

@@ -83,8 +83,6 @@ class EmbeddingService {
   }
 
   private async initOpenAI() {
-    await EmbeddingConfigModel.ensureTable();
-
     for (const [provider, providerInfo] of Object.entries(EMBEDDING_PROVIDERS)) {
       const apiKey = process.env[providerInfo.apiKeyEnv];
       if (apiKey && !isPlaceholderApiKey(apiKey)) {
