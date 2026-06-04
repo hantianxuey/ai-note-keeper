@@ -32,6 +32,14 @@ AI Note Keeper uses semantic versioning for code releases.
 - `npm run migrate:rollback` rolls back the latest migration for controlled recovery.
 - CI and deployment use the same migration entry point instead of ad hoc `init.sql` execution.
 
+`1.6.0` is a minor release focused on security hardening:
+
+- Browser security headers are enabled through Helmet.
+- Authentication endpoints have rate limiting for login and registration attempts.
+- JSON and URL-encoded request bodies use a configurable size limit.
+- Stored LLM and embedding API keys are encrypted with AES-256-GCM and remain backward compatible with historical plaintext rows.
+- ECS setup documents production proxy and encryption-secret defaults.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.

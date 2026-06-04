@@ -14,6 +14,7 @@ const query = vi.mocked(pool.query);
 describe('configuration models', () => {
   beforeEach(() => {
     query.mockReset();
+    process.env.API_KEY_ENCRYPTION_SECRET = 'test-encryption-secret-with-enough-entropy';
   });
 
   it('upserts LLM configs and masks keys', async () => {
@@ -21,7 +22,10 @@ describe('configuration models', () => {
     query.mockResolvedValueOnce({ rows: [row] } as any);
 
     await expect(LLMConfigModel.upsert('openai', 'secret')).resolves.toEqual(row);
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO llm_configs'), ['openai', 'secret']);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO llm_configs'),
+      ['openai', expect.stringMatching(/^enc:v1:/)]
+    );
 
     const masked = [{ provider_key: 'openai', is_active: true, has_key: true }];
     query.mockResolvedValueOnce({ rows: masked } as any);

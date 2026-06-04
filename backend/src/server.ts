@@ -1,16 +1,27 @@
 require('dotenv').config();
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { errorHandler, AppError } from './middleware/errorHandler';
 import { vectorSearchService } from './services/vectorSearchService';
 import { createReadinessSnapshot } from './services/healthService';
 import { getAllowedOrigins, isOriginAllowed } from './config/cors';
+import { getAuthRateLimitConfig, getRequestBodyLimit } from './config/security';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const requestBodyLimit = getRequestBodyLimit();
+const authRateLimitConfig = getAuthRateLimitConfig();
+
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 const allowedOrigins = getAllowedOrigins();
 
+app.disable('x-powered-by');
+app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
     if (isOriginAllowed(origin, allowedOrigins)) {
@@ -21,8 +32,19 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
+
+const authRateLimiter = rateLimit({
+  ...authRateLimitConfig,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: 'Too many authentication attempts. Please try again later.',
+    },
+  },
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'AI Note Keeper API is running' });
@@ -46,6 +68,8 @@ import noteRoutes from './routes/notes';
 import llmRoutes from './routes/llm';
 import embeddingRoutes from './routes/embedding';
 import ragRoutes from './routes/rag';
+app.use('/api/auth/login', authRateLimiter);
+app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/llm', llmRoutes);

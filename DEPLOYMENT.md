@@ -103,6 +103,11 @@ NODE_ENV=production
 PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ainotes
 JWT_SECRET=replace-with-a-strong-secret
+API_KEY_ENCRYPTION_SECRET=replace-with-a-different-strong-secret
+REQUEST_BODY_LIMIT=1mb
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=10
+TRUST_PROXY=true
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
 ```
@@ -129,6 +134,12 @@ npm run migrate:rollback
 ```
 
 Deployments run `npm run migrate` after production dependencies are installed and before PM2 reloads the backend. Applied versions are recorded in the `schema_migrations` table.
+
+## Security Settings
+
+`API_KEY_ENCRYPTION_SECRET` encrypts API keys saved through Settings. Keep it stable across deployments; changing it without re-encrypting stored keys prevents encrypted keys from being read.
+
+`TRUST_PROXY=true` is recommended on ECS because Nginx forwards client IP information to Express. Authentication rate limits are controlled by `AUTH_RATE_LIMIT_WINDOW_MS` and `AUTH_RATE_LIMIT_MAX`.
 
 ## First Deployment
 

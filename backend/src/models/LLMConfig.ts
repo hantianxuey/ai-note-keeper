@@ -1,4 +1,5 @@
 import pool from '../config/database';
+import { decryptSecret, encryptSecret } from '../config/secrets';
 
 interface LLMConfigRow {
   id: number;
@@ -9,12 +10,17 @@ interface LLMConfigRow {
   updated_at: Date;
 }
 
+const decryptRow = (row: LLMConfigRow): LLMConfigRow => ({
+  ...row,
+  api_key: row.api_key ? decryptSecret(row.api_key) : row.api_key,
+});
+
 export const LLMConfigModel = {
   async findAll(): Promise<LLMConfigRow[]> {
     const result = await pool.query(
       'SELECT id, provider_key, api_key, is_active, created_at, updated_at FROM llm_configs ORDER BY provider_key'
     );
-    return result.rows;
+    return result.rows.map(decryptRow);
   },
 
   async findByProvider(providerKey: string): Promise<LLMConfigRow | null> {
@@ -22,19 +28,20 @@ export const LLMConfigModel = {
       'SELECT * FROM llm_configs WHERE provider_key = $1',
       [providerKey]
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? decryptRow(result.rows[0]) : null;
   },
 
   async upsert(providerKey: string, apiKey: string): Promise<LLMConfigRow> {
+    const encryptedApiKey = encryptSecret(apiKey);
     const result = await pool.query(
       `INSERT INTO llm_configs (provider_key, api_key, is_active, updated_at)
        VALUES ($1, $2, true, NOW())
        ON CONFLICT (provider_key)
        DO UPDATE SET api_key = $2, is_active = true, updated_at = NOW()
        RETURNING *`,
-      [providerKey, apiKey]
+      [providerKey, encryptedApiKey]
     );
-    return result.rows[0];
+    return decryptRow(result.rows[0]);
   },
 
   async delete(providerKey: string): Promise<boolean> {
@@ -50,7 +57,7 @@ export const LLMConfigModel = {
       'UPDATE llm_configs SET is_active = $1, updated_at = NOW() WHERE provider_key = $2 RETURNING *',
       [isActive, providerKey]
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? decryptRow(result.rows[0]) : null;
   },
 
   async listMasked(): Promise<Array<{ provider_key: string; is_active: boolean; has_key: boolean }>> {
