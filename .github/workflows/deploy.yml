@@ -80,6 +80,52 @@ jobs:
 
           release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
           mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs"
+          previous_frontend=""
+          previous_backend=""
+          if [ -L "${APP_PATH}/frontend" ]; then
+            previous_frontend="$(readlink -f "${APP_PATH}/frontend")"
+          fi
+          if [ -L "${APP_PATH}/backend" ]; then
+            previous_backend="$(readlink -f "${APP_PATH}/backend")"
+          fi
+
+          reload_nginx() {
+            if command -v sudo >/dev/null 2>&1; then
+              sudo nginx -t
+              sudo nginx -s reload
+            else
+              nginx -t
+              nginx -s reload
+            fi
+          }
+
+          rollback_release() {
+            echo "Smoke test failed. Rolling back to previous release."
+            if [ -n "${previous_frontend}" ] && [ -d "${previous_frontend}" ]; then
+              ln -sfnT "${previous_frontend}" "${APP_PATH}/frontend"
+            fi
+            if [ -n "${previous_backend}" ] && [ -d "${previous_backend}" ]; then
+              ln -sfnT "${previous_backend}" "${APP_PATH}/backend"
+              pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
+              pm2 save
+              previous_release="$(dirname "${previous_backend}")"
+              if [ -f "${previous_release}/deploy/nginx.conf" ]; then
+                install -m 0644 "${previous_release}/deploy/nginx.conf" /etc/nginx/conf.d/ai-note-keeper.conf
+              fi
+              reload_nginx
+            fi
+          }
+
+          smoke_test() {
+            for _ in {1..30}; do
+              if curl -fsS http://127.0.0.1:3000/health/ready >/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
           rm -rf "${release_dir}"
           mkdir -p "${release_dir}"
           tar -xzf "${PACKAGE_FILE}" -C "${APP_PATH}/releases"
@@ -100,12 +146,11 @@ jobs:
           pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
           pm2 save
 
-          if command -v sudo >/dev/null 2>&1; then
-            sudo nginx -t
-            sudo nginx -s reload
-          else
-            nginx -t
-            nginx -s reload
+          reload_nginx
+
+          if ! smoke_test; then
+            rollback_release
+            exit 1
           fi
 
           keep="${RELEASES_TO_KEEP:-5}"

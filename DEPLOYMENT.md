@@ -33,6 +33,7 @@ Build gates:
 - Backend production build: `npm run build`.
 - Backend database migrations: `npm run migrate`.
 - E2E critical path: register a user, create a note, search it, and ask the RAG chat through Playwright.
+- RAG quality eval: create a fixed eval user and notes, ask RAG questions, and fail when citation hit rate drops below the threshold.
 - Release package smoke test: install production backend dependencies from the generated package, start `node dist/server.js`, and verify `/health`.
 
 Coverage gates:
@@ -47,7 +48,9 @@ File: `.github/workflows/deploy.yml`
 Trigger:
 - Manual only. Open GitHub Actions, choose `Deploy Package`, and enter a package id such as `ai-note-keeper-snapshot-42-a1b2c3d` or `ai-note-keeper-release-42-a1b2c3d`.
 
-The deploy job downloads that package artifact, uploads it to ECS, extracts it under `/opt/ai-note-keeper/releases/<package-id>`, updates `/opt/ai-note-keeper/frontend` and `/opt/ai-note-keeper/backend` symlinks, installs the packaged Nginx config, runs production dependency install for the backend, reloads PM2, and reloads Nginx.
+The deploy job downloads that package artifact, uploads it to ECS, extracts it under `/opt/ai-note-keeper/releases/<package-id>`, updates `/opt/ai-note-keeper/frontend` and `/opt/ai-note-keeper/backend` symlinks, installs the packaged Nginx config, runs production dependency install for the backend, reloads PM2, reloads Nginx, and verifies `/health/ready`.
+
+If the post-deploy smoke test fails, the workflow switches the frontend and backend symlinks back to the previous release, reloads PM2 and Nginx, and exits with a failed deployment status. Database migrations should remain backward-compatible within the v1 release line so this automatic code rollback remains safe.
 
 Both `snapshot` and `release` packages can be deployed manually by package id. The difference is automation: `snapshot` packages are never deployed automatically, while the daily scheduled `release` package is deployed automatically after build gates pass.
 
@@ -108,6 +111,7 @@ REQUEST_BODY_LIMIT=1mb
 AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
 TRUST_PROXY=true
+LOG_LEVEL=info
 DEFAULT_LLM_PROVIDER=openai
 DEFAULT_LLM_MODEL=gpt-3.5-turbo
 ```
@@ -140,6 +144,18 @@ Deployments run `npm run migrate` after production dependencies are installed an
 `API_KEY_ENCRYPTION_SECRET` encrypts API keys saved through Settings. Keep it stable across deployments; changing it without re-encrypting stored keys prevents encrypted keys from being read.
 
 `TRUST_PROXY=true` is recommended on ECS because Nginx forwards client IP information to Express. Authentication rate limits are controlled by `AUTH_RATE_LIMIT_WINDOW_MS` and `AUTH_RATE_LIMIT_MAX`.
+
+## Observability
+
+The backend emits structured JSON request logs through Pino. Every response includes `X-Request-Id`, and clients can pass their own `X-Request-Id` header to correlate browser, API, and server logs.
+
+Prometheus-compatible metrics are exposed at:
+
+```text
+GET /metrics
+```
+
+The initial metric set includes HTTP request totals and request duration histograms by method, normalized route, and status code, plus Node.js default process metrics.
 
 ## First Deployment
 

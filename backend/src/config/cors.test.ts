@@ -19,4 +19,8 @@ describe('getAllowedOrigins', () => {
   it('includes localhost and 127.0.0.1 development frontend origins', () => {
     expect(getAllowedOrigins({})).toContain('http://127.0.0.1:4002');
   });
+
+  it('includes the Playwright and Vite preview frontend origin', () => {
+    expect(getAllowedOrigins({})).toContain('http://127.0.0.1:4173');
+  });
 });

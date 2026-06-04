@@ -8,6 +8,9 @@ import { vectorSearchService } from './services/vectorSearchService';
 import { createReadinessSnapshot } from './services/healthService';
 import { getAllowedOrigins, isOriginAllowed } from './config/cors';
 import { getAuthRateLimitConfig, getRequestBodyLimit } from './config/security';
+import { logger } from './config/logger';
+import { metricsMiddleware, requestLogger } from './middleware/observability';
+import { metricsRegistry } from './observability/metrics';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +24,8 @@ if (process.env.TRUST_PROXY === 'true') {
 const allowedOrigins = getAllowedOrigins();
 
 app.disable('x-powered-by');
+app.use(requestLogger);
+app.use(metricsMiddleware);
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
@@ -63,6 +68,15 @@ app.get('/health/ready', async (req, res, next) => {
   }
 });
 
+app.get('/metrics', async (_req, res, next) => {
+  try {
+    res.set('Content-Type', metricsRegistry.contentType);
+    res.send(await metricsRegistry.metrics());
+  } catch (error) {
+    next(error);
+  }
+});
+
 import authRoutes from './routes/auth';
 import noteRoutes from './routes/notes';
 import llmRoutes from './routes/llm';
@@ -83,14 +97,14 @@ app.use('/api', (req, _res, next) => {
 app.use(errorHandler);
 
 app.listen(PORT, async () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log('Reindexing all notes...');
+  logger.info({ port: PORT }, `Server is running on http://localhost:${PORT}`);
+  logger.info({ environment: process.env.NODE_ENV || 'development' }, 'Environment loaded');
+  logger.info('Reindexing all notes...');
   try {
     const count = await vectorSearchService.reindexAllNotes();
-    console.log(`Successfully reindexed ${count} notes`);
+    logger.info({ count }, 'Successfully reindexed notes');
   } catch (error) {
-    console.error('Failed to reindex notes:', error);
+    logger.error({ err: error }, 'Failed to reindex notes');
   }
 });
 

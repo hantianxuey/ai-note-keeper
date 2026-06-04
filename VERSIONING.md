@@ -40,6 +40,14 @@ AI Note Keeper uses semantic versioning for code releases.
 - Stored LLM and embedding API keys are encrypted with AES-256-GCM and remain backward compatible with historical plaintext rows.
 - ECS setup documents production proxy and encryption-secret defaults.
 
+`1.7.0` is a minor release focused on quality evaluation and operability:
+
+- CI runs a deterministic RAG quality eval after the Playwright critical path.
+- The RAG eval reports citation hit rate against a fixed source-note dataset.
+- Backend requests use structured Pino logs with request IDs.
+- Prometheus-compatible HTTP metrics are available at `/metrics`.
+- Deployments run a post-switch readiness smoke test and automatically roll back symlinks to the previous release when it fails.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.
