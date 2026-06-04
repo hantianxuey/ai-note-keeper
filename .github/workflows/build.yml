@@ -21,7 +21,7 @@ env:
   ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
   ECS_USER: ${{ secrets.ECS_USER || 'root' }}
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
-  VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://8.136.39.247/api' }}
+  VITE_API_URL: ${{ secrets.VITE_API_URL || '/api' }}
   DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ainotes
   CHROMA_URL: http://127.0.0.1:8000
   JWT_SECRET: ci-smoke-test-secret
