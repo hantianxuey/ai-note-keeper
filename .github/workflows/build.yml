@@ -177,7 +177,7 @@ jobs:
           cp -a backend/dist "${release_dir}/backend/"
           cp -a backend/migrations "${release_dir}/backend/"
           cp backend/package.json backend/package-lock.json backend/pm2.json "${release_dir}/backend/"
-          cp deploy/nginx.conf "${release_dir}/deploy/"
+          cp deploy/nginx.cloudflare.conf "${release_dir}/deploy/nginx.conf"
 
           cat > "${release_dir}/VERSION" <<EOF
           package_id=${PACKAGE_ID}

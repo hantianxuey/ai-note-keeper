@@ -176,9 +176,11 @@ Cloudflare should use `Full (strict)` SSL/TLS mode for this application. Do not 
 Server certificate layout expected by `deploy/nginx.cloudflare.conf`:
 
 ```text
-/etc/nginx/cert/ai-note-keeper-origin.pem
-/etc/nginx/cert/ai-note-keeper-origin.key
+/etc/nginx/cert/cert.pem
+/etc/nginx/cert/cert.key
 ```
+
+`cert.cer` can be kept as the provider/original certificate copy. Nginx should point `ssl_certificate` at the PEM certificate/fullchain file and `ssl_certificate_key` at the private key.
 
 If your uploaded files use different names, create symlinks to those names. Then install the Cloudflare Nginx config:
 
