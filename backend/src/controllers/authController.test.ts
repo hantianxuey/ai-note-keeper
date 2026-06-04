@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
 import { emailVerificationService } from '../services/emailVerificationService';
-import { login, me, register, sendVerificationCode } from './authController';
+import { login, logout, me, register, sendVerificationCode } from './authController';
 
 vi.mock('bcryptjs', () => ({
   default: {
@@ -37,6 +37,9 @@ const response = () => {
   const res = {
     json: vi.fn(),
     status: vi.fn(),
+    cookie: vi.fn(),
+    clearCookie: vi.fn(),
+    end: vi.fn(),
   };
   res.status.mockReturnValue(res);
   return res;
@@ -61,6 +64,10 @@ describe('authController', () => {
 
     expect(emailVerificationService.verify).toHaveBeenCalledWith('a@example.com', '123456');
     expect(UserModel.create).toHaveBeenCalledWith('a@example.com', 'hash');
+    expect(res.cookie).toHaveBeenCalledWith('auth_token', 'token', expect.objectContaining({
+      httpOnly: true,
+      sameSite: 'lax',
+    }));
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({
       token: 'token',
@@ -118,10 +125,24 @@ describe('authController', () => {
       body: { email: 'a@example.com', password: 'secret1' },
     } as any, res as any, vi.fn());
 
+    expect(res.cookie).toHaveBeenCalledWith('auth_token', 'token', expect.objectContaining({
+      httpOnly: true,
+      sameSite: 'lax',
+    }));
     expect(res.json).toHaveBeenCalledWith({
       token: 'token',
       user: { id: 1, email: 'a@example.com' },
     });
+  });
+
+  it('clears the auth cookie on logout', async () => {
+    const res = response();
+
+    await logout({} as any, res as any, vi.fn());
+
+    expect(res.clearCookie).toHaveBeenCalledWith('auth_token', { path: '/' });
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(res.end).toHaveBeenCalled();
   });
 
   it('rejects invalid login credentials', async () => {

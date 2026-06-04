@@ -20,12 +20,19 @@ export const authenticate = (
   next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
+  const authCookie = req.headers.cookie
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('auth_token='))
+    ?.slice('auth_token='.length);
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if ((!authHeader || !authHeader.startsWith('Bearer ')) && !authCookie) {
     return next(new AppError('Unauthorized: No token provided', 401));
   }
 
-  const token = authHeader.slice(7);
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : decodeURIComponent(authCookie || '');
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET!) as { userId: number };

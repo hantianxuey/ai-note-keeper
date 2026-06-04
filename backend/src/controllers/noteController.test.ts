@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoteModel } from '../models/Note';
+import { AttachmentModel } from '../models/Attachment';
 import { vectorSearchService } from '../services/vectorSearchService';
 import {
   createNote,
@@ -18,6 +19,12 @@ vi.mock('../models/Note', () => ({
     update: vi.fn(),
     delete: vi.fn(),
     search: vi.fn(),
+  },
+}));
+
+vi.mock('../models/Attachment', () => ({
+  AttachmentModel: {
+    findByNoteId: vi.fn(),
   },
 }));
 
@@ -41,6 +48,7 @@ const response = () => {
 describe('noteController', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(AttachmentModel.findByNoteId).mockResolvedValue([]);
     vi.mocked(vectorSearchService.indexNote).mockResolvedValue(undefined);
     vi.mocked(vectorSearchService.removeNoteIndex).mockResolvedValue(undefined);
   });
@@ -116,6 +124,7 @@ describe('noteController', () => {
 
     await deleteNote({ userId: 7, params: { id: '10' } } as any, res as any, vi.fn());
 
+    expect(AttachmentModel.findByNoteId).toHaveBeenCalledWith(10, 7);
     expect(vectorSearchService.removeNoteIndex).toHaveBeenCalledWith(10, 7);
     expect(res.status).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalled();

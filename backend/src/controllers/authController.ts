@@ -14,6 +14,16 @@ const signUserToken = (userId: number) => jwt.sign({ userId }, JWT_SECRET, {
   expiresIn: '7d',
 });
 
+const setAuthCookie = (res: any, token: string) => {
+  res.cookie('auth_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+};
+
 const validateCredentials = (email: string, password: string) => {
   if (!emailRegex.test(email)) {
     throw new AppError('Invalid email format', 400);
@@ -48,8 +58,11 @@ export const register = asyncHandler(async (req: AuthRequest, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await UserModel.create(email, passwordHash);
 
+  const token = signUserToken(user.id);
+  setAuthCookie(res, token);
+
   res.status(201).json({
-    token: signUserToken(user.id),
+    token,
     user: publicUser(user),
   });
 });
@@ -72,10 +85,18 @@ export const login = asyncHandler(async (req: AuthRequest, res) => {
     throw new AppError('Invalid email or password', 401);
   }
 
+  const token = signUserToken(user.id);
+  setAuthCookie(res, token);
+
   res.json({
-    token: signUserToken(user.id),
+    token,
     user: publicUser(user),
   });
+});
+
+export const logout = asyncHandler(async (_req: AuthRequest, res) => {
+  res.clearCookie('auth_token', { path: '/' });
+  res.status(204).end();
 });
 
 export const sendVerificationCode = asyncHandler(async (req: AuthRequest, res) => {

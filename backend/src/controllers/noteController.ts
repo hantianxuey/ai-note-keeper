@@ -1,7 +1,10 @@
 import { NoteModel } from '../models/Note';
+import { AttachmentModel } from '../models/Attachment';
 import { vectorSearchService } from '../services/vectorSearchService';
+import { resolveImagePath } from '../services/imageUploadService';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import fs from 'fs/promises';
 import {
   asyncHandler,
   parseIdParam,
@@ -88,6 +91,7 @@ export const updateNote = asyncHandler(async (req: AuthRequest, res) => {
 export const deleteNote = asyncHandler(async (req: AuthRequest, res) => {
   const userId = requireUserId(req);
   const noteId = parseIdParam(req, 'id', 'note ID');
+  const attachments = await AttachmentModel.findByNoteId(noteId, userId);
   const deleted = await NoteModel.delete(noteId, userId);
 
   if (!deleted) {
@@ -96,6 +100,11 @@ export const deleteNote = asyncHandler(async (req: AuthRequest, res) => {
 
   vectorSearchService.removeNoteIndex(noteId, userId).catch((err) => {
     console.error('Background index removal failed:', err);
+  });
+  Promise.all(
+    attachments.map((attachment) => fs.rm(resolveImagePath(attachment.storage_key), { force: true }))
+  ).catch((err) => {
+    console.error('Background attachment cleanup failed:', err);
   });
   res.status(204).end();
 });

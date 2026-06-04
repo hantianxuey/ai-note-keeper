@@ -32,10 +32,13 @@
   "supportedFormats": "支持格式：",
   "unsupportedFormat": "不支持的文件格式：{{format}}。支持格式：.md, .txt",
   "importFailed": "文件导入失败",
+  "uploadImage": "上传图片",
+  "uploadingImage": "上传中...",
+  "saveBeforeImageUpload": "请先保存笔记，再上传图片。",
+  "imageUploadFailed": "图片上传失败",
   "aiSummary": "AI 摘要",
   "pleaseEnterTitle": "请输入标题",
   "saveFailed": "保存笔记失败",
   "deleteFailed": "删除笔记失败",
-  "summaryFailed": "生成摘要失败",
-  "importing": "导入中..."
+  "summaryFailed": "生成摘要失败"
 }

@@ -6,6 +6,7 @@ const API_BASE_URL = (import.meta as any).env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
@@ -130,6 +131,18 @@ export const notesAPI = {
   create: (data: Partial<Note>) => api.post<{ note: Note }>('/notes', data),
   update: (id: number, data: Partial<Note>) => api.put<{ note: Note }>('/notes/' + id, data),
   delete: (id: number) => api.delete('/notes/' + id),
+};
+
+export const attachmentsAPI = {
+  uploadNoteImage: (noteId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post<{ attachment: { id: number }; url: string }>(
+      `/notes/${noteId}/images`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+  },
 };
 
 export const llmAPI = {

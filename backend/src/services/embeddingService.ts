@@ -407,7 +407,10 @@ class EmbeddingService {
         return false;
       }
 
-      const textToEmbed = `${title}\n\n${content}`;
+      const textToEmbed = `${title}\n\n${content
+        .replace(/<img\b[^>]*>/gi, '')
+        .replace(/!\[[^\]]*]\([^)]*\)/g, '')
+        .replace(/<[^>]+>/g, '')}`;
       const result = await this.createEmbedding(textToEmbed, provider);
 
       if (!result) {

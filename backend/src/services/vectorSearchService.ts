@@ -124,7 +124,11 @@ class VectorSearchService {
       if (!ready) return;
 
       const effectiveProvider = provider || this.getDefaultProvider();
-      const plainContent = content.replace(/<[^>]+>/g, '').replace(/[#*`>\-]/g, '');
+      const plainContent = content
+        .replace(/<img\b[^>]*>/gi, '')
+        .replace(/!\[[^\]]*]\([^)]*\)/g, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/[#*`>\-]/g, '');
       const fullText = `${title}\n\n${plainContent}`;
       const chunks = splitIntoChunks(fullText);
 

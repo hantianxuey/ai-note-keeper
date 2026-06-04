@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Trash2, FileUp, Sparkles, Eye, Edit, Columns, FileText } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, FileUp, Sparkles, Eye, Edit, Columns, FileText, Image as ImageIcon } from 'lucide-react';
 import { useNoteStore } from '../store/useNoteStore';
-import { notesAPI, aiAPI } from '../services/api';
+import { notesAPI, aiAPI, attachmentsAPI } from '../services/api';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -27,10 +28,15 @@ export default function NoteEditor() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summary, setSummary] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
     extensions: [
       StarterKit,
+      Image.configure({
+        allowBase64: false,
+      }),
       Placeholder.configure({
         placeholder: t('startWriting'),
       }),
@@ -73,6 +79,9 @@ export default function NoteEditor() {
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
       .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '```\n$1\n```\n')
+      .replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)\n')
+      .replace(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"[^>]*>/gi, '![$1]($2)\n')
+      .replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)\n')
       .replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
       .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n')
       .replace(/<hr\s*\/?>/gi, '---\n')
@@ -96,6 +105,7 @@ export default function NoteEditor() {
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/`(.*?)`/g, '<code>$1</code>')
       .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+      .replace(/!\[([^\]]*)]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
       .replace(/^\[x\] (.*)$/gm, '<li><input type="checkbox" checked disabled> $1</li>')
       .replace(/^\[ \] (.*)$/gm, '<li><input type="checkbox" disabled> $1</li>')
       .replace(/^- (.*)$/gm, '<li>$1</li>')
@@ -255,6 +265,38 @@ export default function NoteEditor() {
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!currentNote) {
+      alert(t('saveBeforeImageUpload'));
+      event.target.value = '';
+      return;
+    }
+
+    setIsUploadingImage(true);
+    try {
+      const response = await attachmentsAPI.uploadNoteImage(currentNote.id, file);
+      const alt = file.name.replace(/\.[^.]+$/, '');
+      const imageUrl = response.data.url;
+
+      if (editorMode === 'richtext') {
+        editor?.chain().focus().setImage({ src: imageUrl, alt }).run();
+        setMarkdownContent(htmlToMarkdown(editor?.getHTML() || ''));
+      } else {
+        const markdownImage = `![${alt}](${imageUrl})`;
+        setMarkdownContent((content) => content ? `${content}\n\n${markdownImage}` : markdownImage);
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      alert(t('imageUploadFailed'));
+    } finally {
+      setIsUploadingImage(false);
+      event.target.value = '';
+    }
+  };
+
   const handleModeChange = (mode: EditorMode) => {
     if (mode === 'richtext' && editorMode !== 'richtext') {
       if (editor) {
@@ -342,6 +384,24 @@ export default function NoteEditor() {
                   ))}
                 </div>
                 <span className="chip">{markdownContent.length} chars</span>
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={isUploadingImage}
+                  className="btn-secondary"
+                  title={t('uploadImage')}
+                >
+                  <ImageIcon size={18} />
+                  <span className="hidden sm:inline">{isUploadingImage ? t('uploadingImage') : t('uploadImage')}</span>
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  onChange={handleImageUpload}
+                  disabled={isUploadingImage}
+                />
               </div>
 
               <div className={`${editorMode === 'split' ? 'grid grid-cols-1 gap-0 lg:grid-cols-2' : ''}`}>

@@ -57,6 +57,14 @@ AI Note Keeper uses semantic versioning for code releases.
 - Cloudflare Full (strict) Nginx template and origin-certificate paths are documented.
 - CI scans tracked files for common secret patterns before packaging.
 
+`1.9.0` is a minor release focused on secure media attachments:
+
+- Frontend auth tests verify login and registration requests send encrypted passwords without plaintext password fields.
+- Note images can be uploaded through authenticated APIs with server-side MIME allowlists and magic-byte validation.
+- Image content is served through authenticated attachment routes instead of public static file paths.
+- Deleting a note also schedules cleanup for its uploaded image files to reduce long-term disk growth.
+- RAG indexing strips image markup so uploaded images are not interpreted as note text by AI workflows.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.
