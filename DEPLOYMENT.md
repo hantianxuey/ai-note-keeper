@@ -1,6 +1,6 @@
 # AI Note Keeper Aliyun ECS Deployment
 
-This repository deploys to Aliyun ECS `8.136.39.247` through GitHub Actions.
+This repository deploys to Aliyun ECS `8.136.39.247` through GitHub Actions. Do not deploy from a local machine directly; push to GitHub, let the package workflow build the artifact, then deploy by package id.
 
 ## Workflows
 
@@ -54,6 +54,13 @@ If the post-deploy smoke test fails, the workflow switches the frontend and back
 
 Both `snapshot` and `release` packages can be deployed manually by package id. The difference is automation: `snapshot` packages are never deployed automatically, while the daily scheduled `release` package is deployed automatically after build gates pass.
 
+Recommended release path:
+
+1. Push the branch or merge to `main`.
+2. Wait for **Build Package** to pass.
+3. Copy the package id from the workflow summary.
+4. Run **Deploy Package** manually with that package id.
+
 The backend install uses `npm ci --omit=dev --ignore-scripts` on ECS. This avoids native postinstall downloads that can hang in the server environment while keeping the API, PostgreSQL persistence, and fallback embedding behavior available.
 
 ## GitHub Secrets
@@ -67,7 +74,7 @@ Add these in GitHub repository settings: `Settings` -> `Secrets and variables` -
 | `ECS_HOST` | Optional | `8.136.39.247` | Defaults to `8.136.39.247`. |
 | `ECS_USER` | Optional | `root` | Defaults to `root`. Use a deploy user if you create one. |
 | `ECS_APP_PATH` | Optional | `/opt/ai-note-keeper` | Defaults to `/opt/ai-note-keeper`. |
-| `VITE_API_URL` | Optional | `http://8.136.39.247/api` | Defaults to `http://8.136.39.247/api`. |
+| `VITE_API_URL` | Optional | `/api` | Defaults to `/api`; production frontend should use same-origin API routing. |
 
 ## Aliyun ECS Setup
 
@@ -95,6 +102,17 @@ curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/deploy/setup-ec
 
 Replace `<owner>/<repo>` with the real GitHub repository path.
 
+## Environment IaC
+
+Committed configuration lives under `deploy/iac`:
+
+- `common.backend.env`: public non-secret backend defaults.
+- `local.backend.env.example` and `local.frontend.env.example`: local templates copied by `start-dev.ps1`.
+- `production.backend.env.example`: production private template for `/opt/ai-note-keeper/backend/.env` or GitHub Secrets.
+- `production.frontend.env`: public production frontend build values.
+
+Local private files (`backend/.env`, `frontend/.env.local`) and production private files are ignored by Git. Do not edit local values into production templates or production values into local templates.
+
 ## Backend Environment
 
 Keep production secrets on ECS, not in GitHub Actions. The workflow preserves `/opt/ai-note-keeper/backend/.env` across releases.
@@ -114,6 +132,8 @@ AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
 TRUST_PROXY=true
 LOG_LEVEL=info
+REINDEX_ON_STARTUP=false
+CHROMA_URL=http://127.0.0.1:8000
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -121,21 +141,9 @@ SMTP_USER=replace-with-smtp-user
 SMTP_PASS=replace-with-smtp-password
 SMTP_FROM=no-reply@example.com
 CORS_ALLOWED_ORIGINS=https://your-domain.example
-DEFAULT_LLM_PROVIDER=openai
-DEFAULT_LLM_MODEL=gpt-3.5-turbo
 ```
 
-Add provider keys as needed:
-
-```env
-OPENAI_API_KEY=
-QWEN_API_KEY=
-DEEPSEEK_API_KEY=
-EMBEDDING_QWEN_API_KEY=
-PINECONE_API_KEY=
-PINECONE_INDEX=
-PINECONE_ENVIRONMENT=
-```
+LLM and embedding provider API keys are intentionally not production environment variables. Each authenticated user configures their own keys in Settings; the backend only uses demo mode or the current user's saved provider key.
 
 ## Database Migrations
 

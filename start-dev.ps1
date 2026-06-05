@@ -89,11 +89,11 @@ Require-Command npm
 docker compose version | Out-Null
 
 Copy-Env-IfMissing `
-  -ExamplePath (Join-Path $Root 'backend\.env.example') `
+  -ExamplePath (Join-Path $Root 'deploy\iac\local.backend.env.example') `
   -TargetPath (Join-Path $Root 'backend\.env')
 
 Copy-Env-IfMissing `
-  -ExamplePath (Join-Path $Root 'frontend\.env.example') `
+  -ExamplePath (Join-Path $Root 'deploy\iac\local.frontend.env.example') `
   -TargetPath (Join-Path $Root 'frontend\.env.local')
 
 Set-Location -LiteralPath $Root

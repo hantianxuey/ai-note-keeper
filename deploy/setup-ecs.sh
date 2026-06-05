@@ -175,18 +175,23 @@ API_KEY_ENCRYPTION_SECRET=${API_KEY_ENCRYPTION_SECRET_VALUE}
 EMAIL_VERIFICATION_SECRET=${EMAIL_VERIFICATION_SECRET_VALUE}
 REQUEST_BODY_LIMIT=1mb
 AUTH_RATE_LIMIT_WINDOW_MS=900000
-AUTH_RATE_LIMIT_MAX=10
-TRUST_PROXY=true
-DEFAULT_LLM_PROVIDER=openai
-DEFAULT_LLM_MODEL=gpt-3.5-turbo
-CHROMA_URL=http://127.0.0.1:8000
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=
-SMTP_PASS=
-SMTP_FROM=
-EOF
+	AUTH_RATE_LIMIT_MAX=10
+	TRUST_PROXY=true
+	LOG_LEVEL=info
+	REINDEX_ON_STARTUP=false
+	CHROMA_URL=http://127.0.0.1:8000
+	SMTP_HOST=
+	SMTP_PORT=587
+	SMTP_SECURE=false
+	SMTP_USER=
+	SMTP_PASS=
+	SMTP_FROM=
+	SMTP_FAMILY=4
+	SMTP_CONNECTION_TIMEOUT_MS=10000
+	SMTP_GREETING_TIMEOUT_MS=10000
+	SMTP_SOCKET_TIMEOUT_MS=20000
+	CORS_ALLOWED_ORIGINS=https://htxy.top,https://www.htxy.top
+	EOF
   chown "${APP_USER}:${APP_USER}" "${APP_PATH}/backend/.env"
 fi
 
@@ -194,4 +199,4 @@ echo "==> Done"
 echo "Next:"
 echo "1. Put production values in ${APP_PATH}/backend/.env"
 echo "2. Add the GitHub repository secrets listed in DEPLOYMENT.md"
-echo "3. Make sure the Aliyun security group allows TCP 22 and 80"
+echo "3. Make sure the Aliyun security group allows TCP 22, 80, and 443"
