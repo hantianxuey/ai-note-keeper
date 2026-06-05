@@ -2,17 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const post = vi.fn();
 const get = vi.fn();
+const create = vi.fn(() => ({
+  get,
+  post,
+  interceptors: {
+    request: { use: vi.fn() },
+    response: { use: vi.fn() },
+  },
+}));
 
 vi.mock('axios', () => ({
   default: {
-    create: vi.fn(() => ({
-      get,
-      post,
-      interceptors: {
-        request: { use: vi.fn() },
-        response: { use: vi.fn() },
-      },
-    })),
+    create,
   },
 }));
 
@@ -26,6 +27,20 @@ describe('auth API encryption', () => {
     vi.resetModules();
     get.mockResolvedValue({ data: { publicKey: 'public-key' } });
     post.mockResolvedValue({ data: {} });
+  });
+
+  it('falls back to /api when a production build is given a localhost API URL', async () => {
+    const { resolveApiBaseUrl } = await import('./api');
+
+    expect(resolveApiBaseUrl('http://localhost:3000/api', true)).toBe('/api');
+    expect(resolveApiBaseUrl('http://127.0.0.1:3000/api', true)).toBe('/api');
+    expect(resolveApiBaseUrl('http://[::1]:3000/api', true)).toBe('/api');
+  });
+
+  it('keeps explicit non-localhost API URLs', async () => {
+    const { resolveApiBaseUrl } = await import('./api');
+
+    expect(resolveApiBaseUrl('https://api.example.com/api', true)).toBe('https://api.example.com/api');
   });
 
   it('sends encrypted login passwords without plaintext password fields', async () => {

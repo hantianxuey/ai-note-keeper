@@ -2,7 +2,19 @@ import axios from 'axios';
 import { AskResponse, Conversation, Note, User } from '../types';
 import { encryptWithPublicKey } from '../utils/requestEncryption';
 
-const API_BASE_URL = (import.meta as any).env.VITE_API_URL || '/api';
+export const resolveApiBaseUrl = (configuredUrl?: string, isProduction = false) => {
+  if (!configuredUrl) {
+    return '/api';
+  }
+
+  if (isProduction && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(\/|$)/i.test(configuredUrl)) {
+    return '/api';
+  }
+
+  return configuredUrl;
+};
+
+const API_BASE_URL = resolveApiBaseUrl((import.meta as any).env.VITE_API_URL, Boolean((import.meta as any).env.PROD));
 
 const api = axios.create({
   baseURL: API_BASE_URL,
