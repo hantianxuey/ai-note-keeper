@@ -74,7 +74,6 @@ Add these in GitHub repository settings: `Settings` -> `Secrets and variables` -
 | `ECS_HOST` | Optional | `8.136.39.247` | Defaults to `8.136.39.247`. |
 | `ECS_USER` | Optional | `root` | Defaults to `root`. Use a deploy user if you create one. |
 | `ECS_APP_PATH` | Optional | `/opt/ai-note-keeper` | Defaults to `/opt/ai-note-keeper`. |
-| `VITE_API_URL` | Optional | `/api` | Defaults to `/api`; production frontend should use same-origin API routing. |
 
 ## Aliyun ECS Setup
 
@@ -84,7 +83,7 @@ On the Alibaba Cloud Linux ECS instance, make sure these are configured:
 2. Security group allows inbound TCP `80` for HTTP users.
 3. The instance can install packages through `dnf` or `yum`.
 4. The SSH public key matching `ECS_SSH_PRIVATE_KEY` is in the deploy user's `~/.ssh/authorized_keys`.
-5. `/opt/ai-note-keeper/backend/.env` contains production values.
+5. `/opt/ai-note-keeper/shared/backend.env` contains production private values.
 
 You can run the setup script on ECS:
 
@@ -106,16 +105,29 @@ Replace `<owner>/<repo>` with the real GitHub repository path.
 
 Committed configuration lives under `deploy/iac`:
 
-- `common.backend.env`: public non-secret backend defaults.
-- `local.backend.env.example` and `local.frontend.env.example`: local templates copied by `start-dev.ps1`.
-- `production.backend.env.example`: production private template for `/opt/ai-note-keeper/backend/.env` or GitHub Secrets.
-- `production.frontend.env`: public production frontend build values.
+- `common.<target>.env`: public non-secret defaults shared across environments.
+- `<env>.<target>.public.env`: committed environment-specific public values.
+- `<env>.<target>.private.env.example`: committed private-value template.
+- `private/<env>.<target>.env`: real private values, ignored by Git.
 
-Local private files (`backend/.env`, `frontend/.env.local`) and production private files are ignored by Git. Do not edit local values into production templates or production values into local templates.
+Environment files are merged in this order: common, public, then private. Local private files (`backend/.env`, `frontend/.env.local`) and production private files are ignored by Git. Do not edit local values into production templates or production values into local templates.
+
+Validate the IaC rendering before pushing:
+
+```bash
+node scripts/iac/check-env.mjs
+```
+
+Render local files when needed:
+
+```bash
+node scripts/iac/render-env.mjs --env local --target backend --out backend/.env --allow-example-private
+node scripts/iac/render-env.mjs --env local --target frontend --out frontend/.env.local --allow-example-private
+```
 
 ## Backend Environment
 
-Keep production secrets on ECS, not in GitHub Actions. The workflow preserves `/opt/ai-note-keeper/backend/.env` across releases.
+Keep production secrets on ECS, not in GitHub Actions. The workflow preserves `/opt/ai-note-keeper/shared/backend.env` across releases and copies it into each deployed backend release.
 
 Minimum required values:
 
@@ -246,7 +258,7 @@ With that rule, a pull request cannot merge when unit tests, global coverage, in
 
 ### Storage Cleanup
 
-Each deployment keeps only the newest 5 release directories under `/opt/ai-note-keeper/releases` by default. It also deletes shared backend logs older than 14 days. Change `RELEASES_TO_KEEP` or `LOG_RETENTION_DAYS` in the workflow environment if the server disk budget changes.
+Each deployment keeps only the newest 5 release directories under `/opt/ai-note-keeper/releases` by default. It also deletes shared backend logs older than 14 days. Change `RELEASES_TO_KEEP` or `LOG_RETENTION_DAYS` in `deploy/iac/production.backend.public.env` if the server disk budget changes.
 
 `deploy/setup-ecs.sh` installs a logrotate policy for PM2 logs in `/opt/ai-note-keeper/shared/logs` and Nginx logs in `/var/log/nginx/ai-note-keeper.*.log`.
 

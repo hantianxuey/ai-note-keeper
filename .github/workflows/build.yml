@@ -21,13 +21,6 @@ env:
   ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
   ECS_USER: ${{ secrets.ECS_USER || 'root' }}
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
-  VITE_API_URL: ${{ secrets.VITE_API_URL || '/api' }}
-  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ainotes
-  CHROMA_URL: http://127.0.0.1:8000
-  JWT_SECRET: ci-smoke-test-secret
-  INCREMENTAL_COVERAGE_THRESHOLD: "60"
-  RELEASES_TO_KEEP: "5"
-  LOG_RETENTION_DAYS: "14"
 
 jobs:
   build:
@@ -88,6 +81,9 @@ jobs:
       - name: Scan tracked files for secrets
         run: node scripts/security/scan-secrets.mjs
 
+      - name: Validate IaC environment rendering
+        run: node scripts/iac/check-env.mjs
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -109,10 +105,11 @@ jobs:
         run: npm run lint
 
       - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ env.VITE_API_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/iac/load-env.sh production frontend
+          npm --prefix frontend run build
 
       - name: Install backend dependencies
         working-directory: backend
@@ -123,8 +120,11 @@ jobs:
         run: npm run build
 
       - name: Initialize CI database
-        working-directory: backend
-        run: npm run migrate
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/iac/load-env.sh ci backend
+          npm --prefix backend run migrate
 
       - name: Run backend unit tests with coverage
         working-directory: backend
@@ -142,8 +142,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/iac/load-env.sh ci backend
 
-          NODE_ENV=production EMAIL_VERIFICATION_EXPOSE_DEV_CODE=true PORT=3100 DATABASE_URL="${DATABASE_URL}" CHROMA_URL="${CHROMA_URL}" node backend/dist/server.js > e2e-backend.log 2>&1 &
+          node backend/dist/server.js > e2e-backend.log 2>&1 &
           backend_pid=$!
           VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
           frontend_pid=$!
@@ -193,13 +194,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/iac/load-env.sh ci backend
           smoke_dir="$(mktemp -d)"
           tar -xzf "${PACKAGE_ID}.tar.gz" -C "${smoke_dir}"
 
           cd "${smoke_dir}/${PACKAGE_ID}/backend"
           npm ci --omit=dev --ignore-scripts
 
-          NODE_ENV=production PORT=3100 DATABASE_URL="${DATABASE_URL}" node dist/server.js > "${smoke_dir}/server.log" 2>&1 &
+          node dist/server.js > "${smoke_dir}/server.log" 2>&1 &
           server_pid=$!
           trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
 
@@ -239,6 +241,9 @@ jobs:
     environment: production
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download package artifact
         uses: actions/download-artifact@v4
         with:
@@ -268,6 +273,7 @@ jobs:
           PACKAGE_ID: ${{ needs.build.outputs.package_id }}
         run: |
           set -euo pipefail
+          source scripts/iac/load-env.sh production backend
           package_file="${PACKAGE_ID}.tar.gz"
           remote_package="/tmp/${package_file}"
 

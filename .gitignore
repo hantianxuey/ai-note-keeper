@@ -9,6 +9,8 @@ pnpm-lock.yaml
 .env.*.local
 .env.production
 .env.staging
+deploy/iac/private/*
+!deploy/iac/private/.gitkeep
 !.env.example
 
 # Build

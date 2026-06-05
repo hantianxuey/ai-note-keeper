@@ -15,15 +15,15 @@ function Require-Command {
   }
 }
 
-function Copy-Env-IfMissing {
+function Render-Env-IfMissing {
   param(
-    [string]$ExamplePath,
+    [string]$EnvName,
+    [string]$TargetName,
     [string]$TargetPath
   )
 
   if (-not (Test-Path -LiteralPath $TargetPath)) {
-    Copy-Item -LiteralPath $ExamplePath -Destination $TargetPath
-    Write-Host "Created $TargetPath from $ExamplePath"
+    node (Join-Path $Root 'scripts\iac\render-env.mjs') --env $EnvName --target $TargetName --out $TargetPath --allow-example-private
   }
 }
 
@@ -88,12 +88,14 @@ Require-Command npm
 
 docker compose version | Out-Null
 
-Copy-Env-IfMissing `
-  -ExamplePath (Join-Path $Root 'deploy\iac\local.backend.env.example') `
+Render-Env-IfMissing `
+  -EnvName 'local' `
+  -TargetName 'backend' `
   -TargetPath (Join-Path $Root 'backend\.env')
 
-Copy-Env-IfMissing `
-  -ExamplePath (Join-Path $Root 'deploy\iac\local.frontend.env.example') `
+Render-Env-IfMissing `
+  -EnvName 'local' `
+  -TargetName 'frontend' `
   -TargetPath (Join-Path $Root 'frontend\.env.local')
 
 Set-Location -LiteralPath $Root
@@ -113,9 +115,6 @@ Start-DevWindow `
   -Title 'AI Note Keeper Backend' `
   -WorkingDirectory (Join-Path $Root 'backend') `
   -Commands @(
-    "`$env:PORT = '$BackendPort'",
-    "`$env:FRONTEND_URL = 'http://localhost:$FrontendPort'",
-    "`$env:CHROMA_URL = 'http://localhost:8000'",
     'npm install',
     'npm run dev'
   )
@@ -124,7 +123,6 @@ Start-DevWindow `
   -Title 'AI Note Keeper Frontend' `
   -WorkingDirectory (Join-Path $Root 'frontend') `
   -Commands @(
-    "`$env:VITE_API_URL = 'http://localhost:$BackendPort/api'",
     'npm install',
     "npm run dev -- --host 127.0.0.1 --port $FrontendPort"
   )

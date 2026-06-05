@@ -12,15 +12,15 @@ $requiredSnippets = @(
   'docker compose up -d',
   'pg_isready',
   'Wait-ForChroma',
-  'CHROMA_URL',
   'backend/src/config/init.sql',
-  'backend\.env.example',
-  'frontend\.env.example',
+  'Render-Env-IfMissing',
+  'scripts\iac\render-env.mjs',
+  'backend\.env',
+  'frontend\.env.local',
   'npm install',
   'npm run dev',
   '$BackendPort = 4000',
   '$FrontendPort = 4002',
-  'VITE_API_URL',
   '--host 127.0.0.1'
 )
 

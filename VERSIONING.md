@@ -86,9 +86,16 @@ AI Note Keeper uses semantic versioning for code releases.
 - Server-level LLM/embedding environment variables are no longer exposed as user-configured providers.
 - Legacy global database API keys are assigned to `1206677183@qq.com` during migration when that user exists.
 
+`1.10.0` is a minor release focused on environment IaC:
+
+- Public, private, local, CI, and production configuration are split under `deploy/iac`.
+- GitHub Actions render CI and production settings from IaC files instead of hard-coded workflow environment values.
+- Local startup renders `backend/.env` and `frontend/.env.local` from the same IaC source without code changes.
+- Production frontend builds are guarded to use same-origin `/api` and avoid mixed-content regressions.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.
 - Delete shared application logs older than 14 days by default.
 - Rotate PM2 and Nginx logs daily, compress old logs, and cap individual rotated files at 50 MB.
-- Tune `RELEASES_TO_KEEP` and `LOG_RETENTION_DAYS` in GitHub Actions if the ECS disk size changes.
+- Tune `RELEASES_TO_KEEP` and `LOG_RETENTION_DAYS` in `deploy/iac/production.backend.public.env` if the ECS disk size changes.

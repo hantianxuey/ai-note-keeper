@@ -56,7 +56,11 @@ const scanWorkingTree = () => {
     .filter((file) => !isExcluded(file));
 
   return files.flatMap((file) => {
-    const content = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+    const filePath = path.join(repoRoot, file);
+    if (!fs.existsSync(filePath)) {
+      return [];
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
     return scanContent(file, content);
   });
 };

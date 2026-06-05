@@ -1,6 +1,6 @@
 {
   "name": "ai-note-keeper-backend",
-  "version": "1.9.5",
+  "version": "1.10.0",
   "description": "Backend for AI Note Keeper - RAG-based note knowledge base",
   "main": "dist/server.js",
   "scripts": {

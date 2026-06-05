@@ -16,8 +16,6 @@ env:
   ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
   ECS_USER: ${{ secrets.ECS_USER || 'root' }}
   ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
-  RELEASES_TO_KEEP: "5"
-  LOG_RETENTION_DAYS: "14"
 
 jobs:
   deploy:
@@ -26,6 +24,9 @@ jobs:
     environment: production
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download package artifact by package id
         shell: bash
         env:
@@ -70,6 +71,7 @@ jobs:
           PACKAGE_ID: ${{ inputs.package_id }}
         run: |
           set -euo pipefail
+          source scripts/iac/load-env.sh production backend
           package_file="package/${PACKAGE_ID}.tar.gz"
           remote_package="/tmp/${PACKAGE_ID}.tar.gz"
 

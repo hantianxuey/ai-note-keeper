@@ -1,23 +1,49 @@
-# Environment Configuration
+# Environment IaC
 
-This directory separates public, local, and production configuration.
+This directory is the source of truth for environment configuration. Public files are committed; private values stay outside Git.
 
 ## Rules
 
-- Public defaults can be committed.
-- Local private values stay in `backend/.env` and `frontend/.env.local`; these files are ignored by Git.
-- Production private values stay in GitHub Secrets and `/opt/ai-note-keeper/backend/.env` on the server.
-- LLM and embedding provider API keys are not server-global configuration. Users configure their own keys in Settings.
-- Deployments must go through GitHub Actions:
-  1. Push code to GitHub.
-  2. Run or wait for **Build Package**.
-  3. Copy the package id from the build summary.
-  4. Run **Deploy Package** with that package id.
+- Commit only `common.*.env`, `*.public.env`, and `*.private.env.example`.
+- Put real private values in `deploy/iac/private/*.env`, `backend/.env`, `frontend/.env.local`, GitHub Secrets, or `/opt/ai-note-keeper/shared/backend.env`.
+- Never commit `deploy/iac/private/*.env`.
+- Frontend production builds must use `VITE_API_URL=/api` so the browser stays on same-origin HTTPS.
+- LLM and embedding provider API keys are user-owned Settings data, not global server configuration.
+- Deployments must go through GitHub Actions: push code, get the package id from **Build Package**, then run **Deploy Package** with that package id.
 
-## Files
+## Layers
 
-- `common.backend.env`: non-secret backend defaults shared by local and production.
-- `local.backend.env.example`: local backend private template.
-- `local.frontend.env.example`: local frontend private template.
-- `production.backend.env.example`: production backend private template for GitHub Secrets or server `.env`.
-- `production.frontend.env`: production frontend public build-time values.
+Environment files are merged in this order:
+
+1. `common.<target>.env`
+2. `<env>.<target>.public.env`
+3. `private/<env>.<target>.env`
+
+Examples are used only when the render command is passed `--allow-example-private`.
+
+## Environments
+
+- `local`: developer machine defaults.
+- `ci`: GitHub Actions test and package validation defaults.
+- `production`: deployed service defaults.
+
+## Commands
+
+Render local files:
+
+```bash
+node scripts/iac/render-env.mjs --env local --target backend --out backend/.env --allow-example-private
+node scripts/iac/render-env.mjs --env local --target frontend --out frontend/.env.local --allow-example-private
+```
+
+Validate all environment rendering:
+
+```bash
+node scripts/iac/check-env.mjs
+```
+
+Load env in Bash scripts:
+
+```bash
+source scripts/iac/load-env.sh production backend
+```
