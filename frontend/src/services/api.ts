@@ -7,6 +7,10 @@ export const resolveApiBaseUrl = (configuredUrl?: string, isProduction = false) 
     return '/api';
   }
 
+  if (isProduction && /^http:\/\//i.test(configuredUrl)) {
+    return '/api';
+  }
+
   if (isProduction && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(\/|$)/i.test(configuredUrl)) {
     return '/api';
   }

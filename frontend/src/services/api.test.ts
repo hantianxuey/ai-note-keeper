@@ -37,6 +37,12 @@ describe('auth API encryption', () => {
     expect(resolveApiBaseUrl('http://[::1]:3000/api', true)).toBe('/api');
   });
 
+  it('falls back to /api when a production build is given an insecure HTTP API URL', async () => {
+    const { resolveApiBaseUrl } = await import('./api');
+
+    expect(resolveApiBaseUrl('http://8.136.39.247/api', true)).toBe('/api');
+  });
+
   it('keeps explicit non-localhost API URLs', async () => {
     const { resolveApiBaseUrl } = await import('./api');
 
