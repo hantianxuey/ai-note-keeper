@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, BrainCircuit, ShieldCheck, Sparkles } from 'lucide-react';
@@ -13,6 +13,8 @@ export default function Register() {
   const [verificationCode, setVerificationCode] = useState('');
   const [devCode, setDevCode] = useState('');
   const [error, setError] = useState('');
+  const [codeMessage, setCodeMessage] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -21,15 +23,22 @@ export default function Register() {
   const handleSendCode = async () => {
     setError('');
     setDevCode('');
+    setCodeMessage('');
 
     if (!email.trim()) {
       setError('Email is required');
       return;
     }
 
+    if (cooldownSeconds > 0) {
+      return;
+    }
+
     setIsSendingCode(true);
     try {
       const response = await authAPI.sendVerificationCode(email.trim());
+      setCodeMessage('Verification code sent. Please check your inbox and spam folder.');
+      setCooldownSeconds(60);
       if (response.data.devCode) {
         setDevCode(response.data.devCode);
         setVerificationCode(response.data.devCode);
@@ -41,6 +50,18 @@ export default function Register() {
       setIsSendingCode(false);
     }
   };
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldownSeconds]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,12 +221,17 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={handleSendCode}
-                    disabled={isSendingCode || !email.trim()}
+                    disabled={isSendingCode || cooldownSeconds > 0 || !email.trim()}
                     className="btn-secondary whitespace-nowrap px-3"
                   >
-                    {isSendingCode ? 'Sending...' : 'Send Code'}
+                    {isSendingCode ? 'Sending...' : cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'Send Code'}
                   </button>
                 </div>
+                {codeMessage && (
+                  <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    {codeMessage}
+                  </p>
+                )}
                 {devCode && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Dev verification code: {devCode}

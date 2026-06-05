@@ -104,6 +104,11 @@ app.use(errorHandler);
 app.listen(PORT, async () => {
   logger.info({ port: PORT }, `Server is running on http://localhost:${PORT}`);
   logger.info({ environment: process.env.NODE_ENV || 'development' }, 'Environment loaded');
+  if (process.env.REINDEX_ON_STARTUP !== 'true') {
+    logger.info('Startup reindex skipped. Set REINDEX_ON_STARTUP=true to enable it.');
+    return;
+  }
+
   logger.info('Reindexing all notes...');
   try {
     const count = await vectorSearchService.reindexAllNotes();

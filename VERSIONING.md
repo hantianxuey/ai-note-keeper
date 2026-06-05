@@ -76,6 +76,8 @@ AI Note Keeper uses semantic versioning for code releases.
 - Email verification supports either `SMTP_URL` or discrete `SMTP_HOST` settings, with clearer production config errors.
 - Note AI summaries are cached by authenticated note ID and content hash, so unchanged notes reuse the last generated summary.
 - Summary cache columns are managed by migration `004_note_summary_cache`.
+- Registration shows a success notice after verification-code delivery and enforces a client-side resend cooldown.
+- Production PM2 limits Node heap usage and skips startup reindex by default to reduce memory pressure on small ECS instances.
 
 ## Server Storage Policy
 

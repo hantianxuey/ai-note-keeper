@@ -6,17 +6,19 @@
       "cwd": "/opt/ai-note-keeper/backend",
       "args": "",
       "interpreter": "node",
-      "interpreter_args": "",
+      "interpreter_args": "--max-old-space-size=256",
       "env": {
         "NODE_ENV": "production",
-        "PORT": 3000
+        "PORT": 3000,
+        "REINDEX_ON_STARTUP": "false"
       },
       "env_production": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "REINDEX_ON_STARTUP": "false"
       },
       "instances": 1,
       "exec_mode": "fork",
-      "max_memory_restart": "500M",
+      "max_memory_restart": "350M",
       "autorestart": true,
       "watch": false,
       "ignore_watch": ["node_modules", ".git"],
