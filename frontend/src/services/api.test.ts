@@ -73,4 +73,22 @@ describe('auth API encryption', () => {
     expect(JSON.stringify(post.mock.calls[0][1])).not.toContain('secret1');
     expect(post.mock.calls[0][1]).not.toHaveProperty('password');
   });
+
+  it('sends encrypted reset passwords without plaintext password fields', async () => {
+    const { authAPI } = await import('./api');
+
+    await authAPI.resetPassword({
+      email: 'a@example.com',
+      password: 'secret2',
+      verificationCode: '123456',
+    });
+
+    expect(post).toHaveBeenCalledWith('/auth/reset-password', {
+      email: 'a@example.com',
+      verificationCode: '123456',
+      encryptedPassword: 'encrypted-secret',
+    });
+    expect(JSON.stringify(post.mock.calls[0][1])).not.toContain('secret2');
+    expect(post.mock.calls[0][1]).not.toHaveProperty('password');
+  });
 });

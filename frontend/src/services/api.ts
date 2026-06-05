@@ -122,9 +122,17 @@ const getLLMConfig = (): LLMConfig => {
 export const authAPI = {
   sendVerificationCode: (email: string) =>
     api.post<{ message: string; devCode?: string }>('/auth/verification-code', { email }),
+  sendPasswordResetCode: (email: string) =>
+    api.post<{ message: string; devCode?: string }>('/auth/password-reset-code', { email }),
   login: async (data: { email: string; password: string }) =>
     api.post<{ user: User; token: string }>('/auth/login', {
       email: data.email,
+      ...(await encryptedField('password', data.password)),
+    }),
+  resetPassword: async (data: { email: string; password: string; verificationCode: string }) =>
+    api.post<{ user: User; token: string }>('/auth/reset-password', {
+      email: data.email,
+      verificationCode: data.verificationCode,
       ...(await encryptedField('password', data.password)),
     }),
   register: async (data: { email: string; password: string; verificationCode: string }) =>

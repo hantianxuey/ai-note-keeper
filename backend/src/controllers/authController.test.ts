@@ -3,7 +3,15 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
 import { emailVerificationService } from '../services/emailVerificationService';
-import { login, logout, me, register, sendVerificationCode } from './authController';
+import {
+  login,
+  logout,
+  me,
+  register,
+  resetPassword,
+  sendPasswordResetCode,
+  sendVerificationCode,
+} from './authController';
 
 vi.mock('bcryptjs', () => ({
   default: {
@@ -23,6 +31,7 @@ vi.mock('../models/User', () => ({
     create: vi.fn(),
     findByEmail: vi.fn(),
     findById: vi.fn(),
+    updatePassword: vi.fn(),
   },
 }));
 
@@ -109,6 +118,47 @@ describe('authController', () => {
     expect(res.json).toHaveBeenCalledWith({
       message: 'Verification code sent',
       devCode: '123456',
+    });
+  });
+
+  it('sends a password reset code for existing users', async () => {
+    vi.mocked(UserModel.findByEmail).mockResolvedValue({ id: 1, email: 'a@example.com' } as any);
+    vi.mocked(emailVerificationService.createAndSend).mockResolvedValue({ devCode: '123456' });
+    const res = response();
+
+    await sendPasswordResetCode({
+      body: { email: 'a@example.com' },
+    } as any, res as any, vi.fn());
+
+    expect(emailVerificationService.createAndSend).toHaveBeenCalledWith('a@example.com');
+    expect(res.json).toHaveBeenCalledWith({
+      message: 'Password reset code sent',
+      devCode: '123456',
+    });
+  });
+
+  it('resets a password after verifying the reset code', async () => {
+    vi.mocked(UserModel.findByEmail).mockResolvedValue({
+      id: 1,
+      email: 'a@example.com',
+      password_hash: 'old-hash',
+    } as any);
+    vi.mocked(bcrypt.hash).mockResolvedValue('new-hash' as never);
+    const res = response();
+
+    await resetPassword({
+      body: { email: 'a@example.com', password: 'secret2', verificationCode: '123456' },
+    } as any, res as any, vi.fn());
+
+    expect(emailVerificationService.verify).toHaveBeenCalledWith('a@example.com', '123456');
+    expect(UserModel.updatePassword).toHaveBeenCalledWith(1, 'new-hash');
+    expect(res.cookie).toHaveBeenCalledWith('auth_token', 'token', expect.objectContaining({
+      httpOnly: true,
+      sameSite: 'lax',
+    }));
+    expect(res.json).toHaveBeenCalledWith({
+      token: 'token',
+      user: { id: 1, email: 'a@example.com' },
     });
   });
 

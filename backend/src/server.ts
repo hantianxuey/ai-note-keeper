@@ -87,6 +87,8 @@ import attachmentRoutes from './routes/attachments';
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth/verification-code', authRateLimiter);
+app.use('/api/auth/password-reset-code', authRateLimiter);
+app.use('/api/auth/reset-password', authRateLimiter);
 app.use('/api/security', securityRoutes);
 app.use('/api', attachmentRoutes);
 app.use('/api/auth', authRoutes);

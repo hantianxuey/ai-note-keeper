@@ -25,4 +25,11 @@ export const UserModel = {
     );
     return result.rows[0] || null;
   },
+
+  async updatePassword(userId: number, passwordHash: string): Promise<void> {
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [passwordHash, userId]
+    );
+  },
 };

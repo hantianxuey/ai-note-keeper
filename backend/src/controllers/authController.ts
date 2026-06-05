@@ -119,6 +119,59 @@ export const sendVerificationCode = asyncHandler(async (req: AuthRequest, res) =
   });
 });
 
+export const sendPasswordResetCode = asyncHandler(async (req: AuthRequest, res) => {
+  const { email } = req.body;
+  requireFields(req.body, ['email'], 'Email is required');
+
+  if (!emailRegex.test(email)) {
+    throw new AppError('Invalid email format', 400);
+  }
+
+  const existingUser = await UserModel.findByEmail(email);
+  if (!existingUser) {
+    throw new AppError('User not found', 404);
+  }
+
+  const result = await emailVerificationService.createAndSend(email);
+  res.json({
+    message: 'Password reset code sent',
+    ...result,
+  });
+});
+
+export const resetPassword = asyncHandler(async (req: AuthRequest, res) => {
+  const { email, verificationCode } = req.body;
+  const password = readSensitiveField(req.body, 'password');
+  requireFields({ email, password }, ['email', 'password'], 'Email and password are required');
+  requireFields(req.body, ['verificationCode'], 'Verification code is required');
+  if (!password) {
+    throw new AppError('Password is required', 400);
+  }
+  validateCredentials(email, password);
+
+  const existingUser = await UserModel.findByEmail(email);
+  if (!existingUser) {
+    throw new AppError('User not found', 404);
+  }
+
+  try {
+    await emailVerificationService.verify(email, verificationCode);
+  } catch (error: any) {
+    throw new AppError(error.message || 'Invalid verification code', 400);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await UserModel.updatePassword(existingUser.id, passwordHash);
+
+  const token = signUserToken(existingUser.id);
+  setAuthCookie(res, token);
+
+  res.json({
+    token,
+    user: publicUser(existingUser),
+  });
+});
+
 export const me = asyncHandler(async (req: AuthRequest, res) => {
   const user = await UserModel.findById(requireUserId(req));
 

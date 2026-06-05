@@ -44,7 +44,9 @@ export default function Register() {
         setVerificationCode(response.data.devCode);
       }
     } catch (err: any) {
-      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || 'Failed to send verification code';
+      const message = err.response?.status === 409
+        ? 'This email is already registered. Please sign in or reset your password.'
+        : err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || 'Failed to send verification code';
       setError(message);
     } finally {
       setIsSendingCode(false);

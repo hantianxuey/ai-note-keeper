@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, BrainCircuit, ShieldCheck, Sparkles } from 'lucide-react';
@@ -7,12 +7,51 @@ import { useAuthStore } from '../store/useAuthStore';
 
 export default function Login() {
   const { t } = useTranslation('auth');
+  const [isResetMode, setIsResetMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [codeMessage, setCodeMessage] = useState('');
+  const [devCode, setDevCode] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
+
+  const handleSendResetCode = async () => {
+    setError('');
+    setCodeMessage('');
+    setDevCode('');
+
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+
+    if (cooldownSeconds > 0) {
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const response = await authAPI.sendPasswordResetCode(email.trim());
+      setCodeMessage('Reset code sent. Please check your inbox and spam folder.');
+      setCooldownSeconds(60);
+      if (response.data.devCode) {
+        setDevCode(response.data.devCode);
+        setVerificationCode(response.data.devCode);
+      }
+    } catch (err: any) {
+      const message = err.response?.status === 404
+        ? 'No account was found for this email.'
+        : err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || 'Failed to send reset code';
+      setError(message);
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,16 +59,40 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const response = await authAPI.login({ email, password });
+      if (isResetMode && !verificationCode.trim()) {
+        setError('Verification code is required');
+        return;
+      }
+
+      if (password.length < 6) {
+        setError(t('passwordTooShort'));
+        return;
+      }
+
+      const response = isResetMode
+        ? await authAPI.resetPassword({ email, password, verificationCode: verificationCode.trim() })
+        : await authAPI.login({ email, password });
       setAuth(response.data.user, response.data.token);
       navigate('/');
     } catch (err: any) {
-      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || t('loginFailed');
+      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || (isResetMode ? 'Password reset failed.' : t('loginFailed'));
       setError(message);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldownSeconds]);
 
   return (
     <div className="app-shell grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
@@ -87,8 +150,10 @@ export default function Login() {
           <div className="surface p-6 sm:p-8">
             <div className="mb-6">
               <p className="section-label mb-2">Welcome back</p>
-              <h2 className="text-2xl font-bold">{t('loginTitle')}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Continue writing, searching, and asking your notes.</p>
+              <h2 className="text-2xl font-bold">{isResetMode ? 'Reset password' : t('loginTitle')}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {isResetMode ? 'Verify your email and choose a new password.' : 'Continue writing, searching, and asking your notes.'}
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -117,10 +182,48 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-field"
-                  placeholder={t('passwordPlaceholder')}
+                  placeholder={isResetMode ? 'New password' : t('passwordPlaceholder')}
                   required
                 />
               </div>
+
+              {isResetMode && (
+                <div>
+                  <label htmlFor="verificationCode" className="mb-1.5 block text-sm font-semibold">
+                    Verification Code
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="verificationCode"
+                      type="text"
+                      inputMode="numeric"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                      className="input-field flex-1"
+                      placeholder="123456"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendResetCode}
+                      disabled={isSendingCode || cooldownSeconds > 0 || !email.trim()}
+                      className="btn-secondary whitespace-nowrap px-3"
+                    >
+                      {isSendingCode ? 'Sending...' : cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'Send Code'}
+                    </button>
+                  </div>
+                  {codeMessage && (
+                    <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                      {codeMessage}
+                    </p>
+                  )}
+                  {devCode && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Dev reset code: {devCode}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {error && (
                 <div className="rounded-md border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -129,9 +232,22 @@ export default function Login() {
               )}
 
               <button type="submit" disabled={isLoading} className="btn-accent w-full py-2.5">
-                {isLoading ? t('loggingIn') : t('loginButton')}
+                {isLoading ? (isResetMode ? 'Resetting...' : t('loggingIn')) : (isResetMode ? 'Reset password' : t('loginButton'))}
               </button>
             </form>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsResetMode((value) => !value);
+                setError('');
+                setCodeMessage('');
+                setVerificationCode('');
+              }}
+              className="mt-4 w-full text-center text-sm font-semibold text-accent hover:underline"
+            >
+              {isResetMode ? 'Back to login' : 'Forgot password?'}
+            </button>
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
               {t('noAccount')}{' '}
