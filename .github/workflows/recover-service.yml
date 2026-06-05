@@ -56,6 +56,23 @@ jobs:
             ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
           fi
 
+          if [ ! -f "${APP_PATH}/backend/.env" ]; then
+            env_source="$(
+              {
+                find "${APP_PATH}/shared" -maxdepth 1 -name 'backend.env' -type f -printf '%T@ %p\n' 2>/dev/null
+                find "${APP_PATH}" -maxdepth 2 -path "${APP_PATH}/backend.backup.*/.env" -type f -printf '%T@ %p\n' 2>/dev/null
+                find "${APP_PATH}/releases" -mindepth 3 -maxdepth 3 -path '*/backend/.env' -type f -printf '%T@ %p\n' 2>/dev/null
+              } | sort -rn | awk 'NR == 1 { print $2 }'
+            )"
+            if [ -n "${env_source}" ] && [ -f "${env_source}" ]; then
+              echo "Restoring backend .env from an existing server backup."
+              install -m 0600 "${env_source}" "${APP_PATH}/backend/.env"
+              install -m 0600 "${env_source}" "${APP_PATH}/shared/backend.env"
+            else
+              echo "No backend .env backup found on server."
+            fi
+          fi
+
           if [ -f "${APP_PATH}/backend/pm2.json" ]; then
             pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
           else

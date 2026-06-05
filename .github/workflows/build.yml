@@ -340,8 +340,11 @@ jobs:
           mkdir -p "${release_dir}"
           tar -xzf "${PACKAGE_FILE}" -C "${APP_PATH}/releases"
 
-          if [ -f "${APP_PATH}/backend/.env" ]; then
-            cp "${APP_PATH}/backend/.env" "${release_dir}/backend/.env"
+          if [ -f "${APP_PATH}/shared/backend.env" ]; then
+            install -m 0600 "${APP_PATH}/shared/backend.env" "${release_dir}/backend/.env"
+          elif [ -f "${APP_PATH}/backend/.env" ]; then
+            install -m 0600 "${APP_PATH}/backend/.env" "${release_dir}/backend/.env"
+            install -m 0600 "${APP_PATH}/backend/.env" "${APP_PATH}/shared/backend.env"
           fi
 
           mkdir -p "${release_dir}/backend/logs"
