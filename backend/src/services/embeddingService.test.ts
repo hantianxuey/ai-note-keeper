@@ -1,4 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('chromadb', () => ({
+  ChromaClient: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock('@chroma-core/default-embed', () => ({
+  DefaultEmbeddingFunction: vi.fn(),
+}));
+
 import { resolveChromaClientArgs, resolveChromaUrl } from './embeddingService';
 
 describe('resolveChromaUrl', () => {
