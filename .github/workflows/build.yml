@@ -142,27 +142,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source scripts/iac/load-env.sh ci backend
 
-          node backend/dist/server.js > e2e-backend.log 2>&1 &
+          (
+            source scripts/iac/load-env.sh ci backend
+            node backend/dist/server.js
+          ) > e2e-backend.log 2>&1 &
           backend_pid=$!
-          VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
+          NODE_ENV=development VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
           frontend_pid=$!
           trap 'kill "${backend_pid}" "${frontend_pid}" 2>/dev/null || true' EXIT
 
+          backend_ready=0
           for _ in {1..30}; do
             if curl -fsS http://127.0.0.1:3100/health/live >/dev/null; then
+              backend_ready=1
               break
             fi
             sleep 1
           done
+          if [ "${backend_ready}" != "1" ]; then
+            cat e2e-backend.log
+            exit 1
+          fi
 
+          frontend_ready=0
           for _ in {1..30}; do
             if curl -fsS http://127.0.0.1:4173 >/dev/null; then
+              frontend_ready=1
               break
             fi
             sleep 1
           done
+          if [ "${frontend_ready}" != "1" ]; then
+            cat e2e-frontend.log
+            exit 1
+          fi
 
           E2E_BASE_URL=http://127.0.0.1:4173 npm --prefix frontend run test:e2e
           RAG_EVAL_API_URL=http://127.0.0.1:3100/api npm --prefix backend run eval:rag
