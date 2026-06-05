@@ -80,6 +80,39 @@ jobs:
             sleep 1
           done
 
+          echo "== release pointers =="
+          readlink -f "${APP_PATH}/backend" || true
+          readlink -f "${APP_PATH}/frontend" || true
+          ls -la "${APP_PATH}" || true
+
+          echo "== backend env keys =="
+          if [ -f "${APP_PATH}/backend/.env" ]; then
+            awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ {
+              if ($1 == "DATABASE_URL" || $1 == "SMTP_URL") {
+                value=$0
+                sub(/^[^=]+=/, "", value)
+                gsub(/:[^:@/]+@/, ":***@", value)
+                print $1 "=" value
+              } else {
+                print $1 "=***"
+              }
+            }' "${APP_PATH}/backend/.env"
+          else
+            echo "missing ${APP_PATH}/backend/.env"
+          fi
+
+          echo "== listeners =="
+          ss -lntp || true
+
+          echo "== pm2 describe =="
+          pm2 describe ai-note-keeper || true
+
+          echo "== shared backend error log =="
+          tail -n 160 "${APP_PATH}/shared/logs/backend.err.log" 2>/dev/null || true
+
+          echo "== pm2 error logs =="
+          tail -n 160 /root/.pm2/logs/ai-note-keeper-error.log 2>/dev/null || true
+
           pm2 status || true
           journalctl -u nginx --no-pager -n 80 || true
           exit 1
