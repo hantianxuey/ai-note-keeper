@@ -1,0 +1,86 @@
+name: Recover Service
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ECS_HOST: ${{ secrets.ECS_HOST || '8.136.39.247' }}
+  ECS_USER: ${{ secrets.ECS_USER || 'root' }}
+  ECS_APP_PATH: ${{ secrets.ECS_APP_PATH || '/opt/ai-note-keeper' }}
+
+jobs:
+  recover:
+    name: Restart current service
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          ECS_SSH_PRIVATE_KEY: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${ECS_SSH_PRIVATE_KEY}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${ECS_SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          if [ -n "${ECS_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${ECS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${ECS_HOST}" > ~/.ssh/known_hosts
+          fi
+
+      - name: Restart PM2 and Nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "${ECS_USER}@${ECS_HOST}" \
+            "APP_PATH='${ECS_APP_PATH}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          if [ ! -d "${APP_PATH}/backend" ]; then
+            latest_backend="$(
+              find "${APP_PATH}/releases" -mindepth 2 -maxdepth 2 -path '*/backend' -type d -printf '%T@ %p\n' 2>/dev/null \
+                | sort -rn \
+                | awk 'NR == 1 { print $2 }'
+            )"
+            test -n "${latest_backend}"
+            release_dir="$(dirname "${latest_backend}")"
+            ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"
+            ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
+          fi
+
+          if [ -f "${APP_PATH}/backend/pm2.json" ]; then
+            pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
+          else
+            cd "${APP_PATH}/backend"
+            pm2 start dist/server.js --name ai-note-keeper --update-env
+          fi
+          pm2 save
+
+          current_release="$(dirname "$(readlink -f "${APP_PATH}/backend")")"
+          if [ -f "${current_release}/deploy/nginx.conf" ]; then
+            install -m 0644 "${current_release}/deploy/nginx.conf" /etc/nginx/conf.d/ai-note-keeper.conf
+          fi
+
+          nginx -t
+          nginx -s reload || systemctl restart nginx
+
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health/live >/dev/null; then
+              curl -fsS http://127.0.0.1:3000/health/live
+              exit 0
+            fi
+            sleep 1
+          done
+
+          pm2 status || true
+          journalctl -u nginx --no-pager -n 80 || true
+          exit 1
+          EOF
