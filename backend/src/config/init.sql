@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS notes (
   markdown_content TEXT DEFAULT NULL,
   tags TEXT[] DEFAULT NULL,
   category VARCHAR(100) DEFAULT NULL,
+  ai_summary TEXT DEFAULT NULL,
+  ai_summary_content_hash VARCHAR(64) DEFAULT NULL,
+  ai_summary_generated_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -53,6 +56,7 @@ CREATE TABLE IF NOT EXISTS note_chunks (
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_notes_summary_cache ON notes(id, user_id, ai_summary_content_hash);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_llm_configs_provider_key ON llm_configs(provider_key);
 CREATE INDEX IF NOT EXISTS idx_notes_search ON notes USING GIN (to_tsvector('english', title || ' ' || content));

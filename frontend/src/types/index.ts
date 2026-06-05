@@ -8,8 +8,12 @@ export interface Note {
   user_id: number;
   title: string;
   content: string;
+  markdown_content?: string | null;
   tags: string[] | null;
   category: string | null;
+  ai_summary?: string | null;
+  ai_summary_content_hash?: string | null;
+  ai_summary_generated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +102,7 @@ export interface SearchResponse {
 
 export interface SummaryResponse {
   summary: string;
+  cached?: boolean;
 }
 
 export interface KeywordsResponse {

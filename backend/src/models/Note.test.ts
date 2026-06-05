@@ -55,6 +55,33 @@ describe('NoteModel', () => {
     await expect(NoteModel.delete(2, 7)).resolves.toBe(false);
   });
 
+  it('returns cached summaries only for a matching note, user, and content hash', async () => {
+    query.mockResolvedValueOnce({ rows: [{ ai_summary: 'cached' }] } as any);
+
+    await expect(NoteModel.findCachedSummary(1, 7, 'abc')).resolves.toBe('cached');
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ai_summary_content_hash = $3'), [1, 7, 'abc']);
+  });
+
+  it('stores generated summaries for the authenticated user note', async () => {
+    query.mockResolvedValueOnce({ rows: [] } as any);
+
+    await NoteModel.updateSummary(1, 7, 'summary', 'abc');
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ai_summary_generated_at = NOW()'), [
+      'summary',
+      'abc',
+      1,
+      7,
+    ]);
+  });
+
+  it('returns null when no cached summary matches', async () => {
+    query.mockResolvedValueOnce({ rows: [] } as any);
+
+    await expect(NoteModel.findCachedSummary(1, 7, 'abc')).resolves.toBeNull();
+  });
+
   it('searches by a wrapped query', async () => {
     query.mockResolvedValueOnce({ rows: [] } as any);
 

@@ -14,6 +14,9 @@ export interface Note {
   markdown_content: string | null;
   tags: string[] | null;
   category: string | null;
+  ai_summary: string | null;
+  ai_summary_content_hash: string | null;
+  ai_summary_generated_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

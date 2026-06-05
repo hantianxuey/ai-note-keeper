@@ -150,8 +150,8 @@ export const llmAPI = {
   getModels: (provider?: string) => api.get<{ models: LLMModel[] }>(provider ? `/llm/models/${provider}` : '/llm/models'),
   getAllModels: () => api.get<{ models: LLMModel[] }>('/llm/models'),
   testConnection: (provider: string, model: string) => api.post('/llm/test', { provider, model }),
-  generateSummary: (content: string, provider?: string, model?: string) =>
-    api.post<{ summary: string }>('/llm/summary', { content, provider, model }),
+  generateSummary: (content: string, provider?: string, model?: string, noteId?: number) =>
+    api.post<{ summary: string; cached?: boolean }>('/llm/summary', { content, provider, model, noteId }),
   extractKeywords: (content: string, provider?: string, model?: string) =>
     api.post<{ keywords: string[] }>('/llm/keywords', { content, provider, model }),
   rewriteNote: (content: string, instruction?: string, provider?: string, model?: string) =>
@@ -183,7 +183,7 @@ export const embeddingAPI = {
 export const aiAPI = {
   summary: (_noteId: number, content?: string) => {
     const config = getLLMConfig();
-    return llmAPI.generateSummary(content || '', config.provider, config.model);
+    return llmAPI.generateSummary(content || '', config.provider, config.model, _noteId);
   },
   keywords: (_noteId: number, content?: string) => {
     const config = getLLMConfig();

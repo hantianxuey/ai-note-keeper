@@ -1,10 +1,16 @@
+import crypto from 'crypto';
 import { Response, NextFunction } from 'express';
 import { llmService } from '../services/llmService';
 import { LLMConfigModel } from '../models/LLMConfig';
+import { NoteModel } from '../models/Note';
 import { LLM_PROVIDERS } from '../types/llm';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
+import { requireUserId } from './controllerUtils';
+
+const summaryContentHash = (content: string) =>
+  crypto.createHash('sha256').update(content).digest('hex');
 
 export const getProviders = async (
   req: AuthRequest,
@@ -107,10 +113,28 @@ export const generateSummary = async (
   next: NextFunction
 ) => {
   try {
-    const { content, provider, model } = req.body;
+    const { content, provider, model, noteId } = req.body;
 
     if (!content) {
       return next(new AppError('Content is required', 400));
+    }
+
+    const noteIdNumber = Number(noteId);
+    const canCache = Number.isInteger(noteIdNumber) && noteIdNumber > 0;
+    const contentHash = summaryContentHash(content);
+
+    if (canCache) {
+      const userId = requireUserId(req);
+      const note = await NoteModel.findById(noteIdNumber, userId);
+      if (!note) {
+        return next(new AppError('Note not found', 404));
+      }
+
+      const cachedSummary = await NoteModel.findCachedSummary(noteIdNumber, userId, contentHash);
+      if (cachedSummary) {
+        res.json({ summary: cachedSummary, cached: true });
+        return;
+      }
     }
 
     const summary = await llmService.generateSummary(content, {
@@ -119,7 +143,11 @@ export const generateSummary = async (
       temperature: 0.5,
     });
 
-    res.json({ summary });
+    if (canCache) {
+      await NoteModel.updateSummary(noteIdNumber, requireUserId(req), summary, contentHash);
+    }
+
+    res.json({ summary, cached: false });
   } catch (error) {
     next(error);
   }

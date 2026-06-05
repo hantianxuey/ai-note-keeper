@@ -11,6 +11,10 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 const createCode = () => crypto.randomInt(100000, 1000000).toString();
 
+const smtpUrl = () => process.env.SMTP_URL?.trim();
+
+const smtpHost = () => process.env.SMTP_HOST?.trim();
+
 export const createVerificationCodeHash = (email: string, code: string) =>
   crypto
     .createHmac('sha256', secret())
@@ -23,24 +27,26 @@ export const verifyCodeHash = (expectedHash: string, email: string, code: string
 };
 
 const sendEmail = async (email: string, code: string) => {
-  if (!process.env.SMTP_HOST) {
+  if (!smtpUrl() && !smtpHost()) {
     if (process.env.NODE_ENV === 'production' && process.env.EMAIL_VERIFICATION_EXPOSE_DEV_CODE !== 'true') {
-      throw new Error('SMTP_HOST is required to send verification emails in production');
+      throw new Error('SMTP_URL or SMTP_HOST is required to send verification emails in production');
     }
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: process.env.SMTP_USER && process.env.SMTP_PASS
-      ? {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        }
-      : undefined,
-  });
+  const transporter = smtpUrl()
+    ? nodemailer.createTransport(smtpUrl()!)
+    : nodemailer.createTransport({
+        host: smtpHost(),
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: process.env.SMTP_USER && process.env.SMTP_PASS
+          ? {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS,
+            }
+          : undefined,
+      });
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,

@@ -71,6 +71,12 @@ AI Note Keeper uses semantic versioning for code releases.
 - Production dependency audit now reports no backend runtime vulnerabilities.
 - ECS setup now provisions ChromaDB as a localhost-only Podman systemd service with persistent shared storage.
 
+`1.9.2` is a patch release focused on registration email configuration and summary reuse:
+
+- Email verification supports either `SMTP_URL` or discrete `SMTP_HOST` settings, with clearer production config errors.
+- Note AI summaries are cached by authenticated note ID and content hash, so unchanged notes reuse the last generated summary.
+- Summary cache columns are managed by migration `004_note_summary_cache`.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.

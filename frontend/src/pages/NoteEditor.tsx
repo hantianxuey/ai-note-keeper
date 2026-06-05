@@ -27,6 +27,7 @@ export default function NoteEditor() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summary, setSummary] = useState('');
+  const [summarySourceContent, setSummarySourceContent] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -125,6 +126,7 @@ export default function NoteEditor() {
       setCategory('');
       setMarkdownContent('');
       setSummary('');
+      setSummarySourceContent('');
       if (editor) {
         editor.commands.setContent('');
       }
@@ -138,16 +140,20 @@ export default function NoteEditor() {
       setTitle(response.data.note.title);
       setTags(response.data.note.tags?.join(', ') || '');
       setCategory(response.data.note.category || '');
-      setSummary('');
+      setSummary(response.data.note.ai_summary || '');
+      setSummarySourceContent('');
       if (response.data.note.content) {
         const isHtml = response.data.note.content.includes('<');
         if (isHtml) {
+          const loadedMarkdown = htmlToMarkdown(response.data.note.content);
           if (editor) {
             editor.commands.setContent(response.data.note.content);
           }
-          setMarkdownContent(htmlToMarkdown(response.data.note.content));
+          setMarkdownContent(loadedMarkdown);
+          setSummarySourceContent(response.data.note.ai_summary ? loadedMarkdown : '');
         } else {
           setMarkdownContent(response.data.note.content);
+          setSummarySourceContent(response.data.note.ai_summary ? response.data.note.content : '');
           if (editor) {
             editor.commands.setContent(markdownToHtml(response.data.note.content));
           }
@@ -225,6 +231,7 @@ export default function NoteEditor() {
     try {
       const response = await aiAPI.summary(currentNote?.id || 0, contentToSummarize);
       setSummary(response.data.summary);
+      setSummarySourceContent(contentToSummarize);
     } catch (error) {
       console.error('Failed to generate summary:', error);
       alert(t('summaryFailed'));
@@ -232,6 +239,13 @@ export default function NoteEditor() {
       setIsGeneratingSummary(false);
     }
   };
+
+  useEffect(() => {
+    if (summary && summarySourceContent && markdownContent !== summarySourceContent) {
+      setSummary('');
+      setSummarySourceContent('');
+    }
+  }, [markdownContent, summary, summarySourceContent]);
 
   const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

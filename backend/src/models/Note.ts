@@ -54,6 +54,30 @@ export const NoteModel = {
     return result.rows[0] || null;
   },
 
+  async findCachedSummary(id: number, userId: number, contentHash: string): Promise<string | null> {
+    const result = await pool.query(
+      `SELECT ai_summary
+       FROM notes
+       WHERE id = $1
+         AND user_id = $2
+         AND ai_summary_content_hash = $3
+         AND ai_summary IS NOT NULL`,
+      [id, userId, contentHash]
+    );
+    return result.rows[0]?.ai_summary || null;
+  },
+
+  async updateSummary(id: number, userId: number, summary: string, contentHash: string): Promise<void> {
+    await pool.query(
+      `UPDATE notes
+       SET ai_summary = $1,
+           ai_summary_content_hash = $2,
+           ai_summary_generated_at = NOW()
+       WHERE id = $3 AND user_id = $4`,
+      [summary, contentHash, id, userId]
+    );
+  },
+
   async delete(id: number, userId: number): Promise<boolean> {
     const result = await pool.query(
       'DELETE FROM notes WHERE id = $1 AND user_id = $2',
