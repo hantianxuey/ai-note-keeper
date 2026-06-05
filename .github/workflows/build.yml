@@ -274,12 +274,13 @@ jobs:
           scp "${package_file}" "${ECS_USER}@${ECS_HOST}:${remote_package}"
           ssh "${ECS_USER}@${ECS_HOST}" \
             "PACKAGE_ID='${PACKAGE_ID}' APP_PATH='${ECS_APP_PATH}' PACKAGE_FILE='${remote_package}' RELEASES_TO_KEEP='${RELEASES_TO_KEEP}' LOG_RETENTION_DAYS='${LOG_RETENTION_DAYS}' bash -s" <<'EOF'
-          set -euo pipefail
+          set -eEuo pipefail
 
           release_dir="${APP_PATH}/releases/${PACKAGE_ID}"
           mkdir -p "${APP_PATH}/releases" "${APP_PATH}/shared/logs"
           previous_frontend=""
           previous_backend=""
+          switched_release=0
           if [ -L "${APP_PATH}/frontend" ]; then
             previous_frontend="$(readlink -f "${APP_PATH}/frontend")"
           fi
@@ -298,7 +299,8 @@ jobs:
           }
 
           rollback_release() {
-            echo "Smoke test failed. Rolling back to previous release."
+            set +e
+            echo "Deployment failed after release switch. Rolling back to previous release."
             if [ -n "${previous_frontend}" ] && [ -d "${previous_frontend}" ]; then
               ln -sfnT "${previous_frontend}" "${APP_PATH}/frontend"
             fi
@@ -313,6 +315,16 @@ jobs:
               reload_nginx
             fi
           }
+
+          on_deploy_error() {
+            if [ "${switched_release}" = "1" ]; then
+              rollback_release
+            else
+              echo "Deployment failed before release switch. Current service was left unchanged."
+            fi
+          }
+
+          trap on_deploy_error ERR
 
           smoke_test() {
             for _ in {1..30}; do
@@ -340,6 +352,7 @@ jobs:
           ln -sfnT "${release_dir}/frontend" "${APP_PATH}/frontend"
           ln -sfnT "${release_dir}/backend" "${APP_PATH}/backend"
           install -m 0644 "${release_dir}/deploy/nginx.conf" /etc/nginx/conf.d/ai-note-keeper.conf
+          switched_release=1
 
           pm2 startOrReload "${APP_PATH}/backend/pm2.json" --env production
           pm2 save
@@ -350,6 +363,8 @@ jobs:
             rollback_release
             exit 1
           fi
+
+          trap - ERR
 
           keep="${RELEASES_TO_KEEP:-5}"
           find "${APP_PATH}/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
