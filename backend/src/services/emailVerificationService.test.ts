@@ -29,6 +29,8 @@ describe('emailVerificationService', () => {
     delete process.env.SMTP_PASS;
     delete process.env.SMTP_FROM;
     delete process.env.SMTP_URL;
+    delete process.env.SMTP_FAMILY;
+    delete process.env.SMTP_CONNECTION_TIMEOUT_MS;
     delete process.env.EMAIL_VERIFICATION_EXPOSE_DEV_CODE;
     vi.resetAllMocks();
   });
@@ -68,6 +70,30 @@ describe('emailVerificationService', () => {
     expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
       from: 'no-reply@example.com',
       to: 'a@example.com',
+    }));
+  });
+
+  it('uses IPv4 and bounded timeouts for host-based SMTP connections', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SMTP_HOST = 'smtp.gmail.com';
+    process.env.SMTP_PORT = '465';
+    process.env.SMTP_SECURE = 'true';
+    process.env.SMTP_USER = 'a@example.com';
+    process.env.SMTP_PASS = 'app-password';
+    vi.mocked(EmailVerificationModel.create).mockResolvedValue(undefined);
+    const sendMail = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as any);
+
+    await emailVerificationService.createAndSend('b@example.com');
+
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      family: 4,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
     }));
   });
 

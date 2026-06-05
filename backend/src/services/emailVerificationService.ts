@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { EmailVerificationModel } from '../models/EmailVerification';
 
 const CODE_TTL_MINUTES = 10;
@@ -14,6 +15,14 @@ const createCode = () => crypto.randomInt(100000, 1000000).toString();
 const smtpUrl = () => process.env.SMTP_URL?.trim();
 
 const smtpHost = () => process.env.SMTP_HOST?.trim();
+
+const smtpFamily = () => Number(process.env.SMTP_FAMILY || 4);
+
+const smtpConnectionTimeout = () => Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000);
+
+const smtpGreetingTimeout = () => Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000);
+
+const smtpSocketTimeout = () => Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000);
 
 export const createVerificationCodeHash = (email: string, code: string) =>
   crypto
@@ -34,19 +43,25 @@ const sendEmail = async (email: string, code: string) => {
     return;
   }
 
+  const smtpOptions: SMTPTransport.Options & { family?: number } = {
+    host: smtpHost(),
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === 'true',
+    family: smtpFamily(),
+    connectionTimeout: smtpConnectionTimeout(),
+    greetingTimeout: smtpGreetingTimeout(),
+    socketTimeout: smtpSocketTimeout(),
+    auth: process.env.SMTP_USER && process.env.SMTP_PASS
+      ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        }
+      : undefined,
+  };
+
   const transporter = smtpUrl()
     ? nodemailer.createTransport(smtpUrl()!)
-    : nodemailer.createTransport({
-        host: smtpHost(),
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: process.env.SMTP_USER && process.env.SMTP_PASS
-          ? {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            }
-          : undefined,
-      });
+    : nodemailer.createTransport(smtpOptions);
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
