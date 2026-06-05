@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateSummary } from './llmController';
+import { deleteApiKey, generateSummary, getApiKeys, saveApiKey } from './llmController';
 import { llmService } from '../services/llmService';
 import { NoteModel } from '../models/Note';
+import { LLMConfigModel } from '../models/LLMConfig';
 
 vi.mock('../services/llmService', () => ({
   llmService: {
     generateSummary: vi.fn(),
+    removeUserProvider: vi.fn(),
   },
 }));
 
@@ -14,6 +16,14 @@ vi.mock('../models/Note', () => ({
     findById: vi.fn(),
     findCachedSummary: vi.fn(),
     updateSummary: vi.fn(),
+  },
+}));
+
+vi.mock('../models/LLMConfig', () => ({
+  LLMConfigModel: {
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    listMasked: vi.fn(),
   },
 }));
 
@@ -29,6 +39,7 @@ const response = () => {
 describe('llmController', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    delete process.env.OPENAI_API_KEY;
   });
 
   it('returns a cached summary for an unchanged note without calling the LLM', async () => {
@@ -61,8 +72,65 @@ describe('llmController', () => {
     expect(llmService.generateSummary).toHaveBeenCalledWith('new content', expect.objectContaining({
       provider: 'demo',
       model: 'demo-chat',
-    }));
+    }), 7);
     expect(NoteModel.updateSummary).toHaveBeenCalledWith(3, 7, 'fresh summary', expect.any(String));
     expect(res.json).toHaveBeenCalledWith({ summary: 'fresh summary', cached: false });
+  });
+
+  it('saves LLM API keys for the current user only', async () => {
+    vi.mocked(LLMConfigModel.upsert).mockResolvedValue({ provider_key: 'openai' } as any);
+    const res = response();
+
+    await saveApiKey({
+      userId: 7,
+      body: { provider: 'openai', apiKey: 'sk-user-7' },
+    } as any, res as any, vi.fn());
+
+    expect(LLMConfigModel.upsert).toHaveBeenCalledWith(7, 'openai', 'sk-user-7');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  it('deletes LLM API keys for the current user only and clears scoped cache', async () => {
+    vi.mocked(LLMConfigModel.delete).mockResolvedValue(true);
+    const res = response();
+
+    await deleteApiKey({
+      userId: 7,
+      params: { provider: 'openai' },
+    } as any, res as any, vi.fn());
+
+    expect(LLMConfigModel.delete).toHaveBeenCalledWith(7, 'openai');
+    expect(llmService.removeUserProvider).toHaveBeenCalledWith(7, 'openai');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  it('lists LLM API key state for the current user only', async () => {
+    vi.mocked(LLMConfigModel.listMasked).mockResolvedValue([
+      { provider_key: 'openai', is_active: true, has_key: true },
+    ]);
+    const res = response();
+
+    await getApiKeys({ userId: 7 } as any, res as any, vi.fn());
+
+    expect(LLMConfigModel.listMasked).toHaveBeenCalledWith(7);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      keys: expect.arrayContaining([
+        expect.objectContaining({ provider: 'openai', source: 'database', hasKey: true }),
+      ]),
+    }));
+  });
+
+  it('does not expose environment LLM keys as user keys', async () => {
+    process.env.OPENAI_API_KEY = 'sk-server-shared-key';
+    vi.mocked(LLMConfigModel.listMasked).mockResolvedValue([]);
+    const res = response();
+
+    await getApiKeys({ userId: 7 } as any, res as any, vi.fn());
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      keys: expect.arrayContaining([
+        expect.objectContaining({ provider: 'openai', source: 'none', hasKey: false }),
+      ]),
+    }));
   });
 });

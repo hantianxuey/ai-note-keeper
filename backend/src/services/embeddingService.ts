@@ -38,6 +38,8 @@ class EmbeddingService {
   private collection: Collection | null = null;
   private openaiClients: Map<string, OpenAI> = new Map();
   private embeddingModels: Map<string, string> = new Map();
+  private userOpenaiClients: Map<string, OpenAI> = new Map();
+  private userEmbeddingModels: Map<string, string> = new Map();
   private embeddingFunction: DefaultEmbeddingFunction | EmbeddingFunction | null = null;
   private initialized = false;
   private currentEmbeddingProvider: string = 'qwen';
@@ -83,82 +85,8 @@ class EmbeddingService {
   }
 
   private async initOpenAI() {
-    for (const [provider, providerInfo] of Object.entries(EMBEDDING_PROVIDERS)) {
-      const apiKey = process.env[providerInfo.apiKeyEnv];
-      if (apiKey && !isPlaceholderApiKey(apiKey)) {
-        const client = new OpenAI({ apiKey, baseURL: providerInfo.baseURL });
-        this.openaiClients.set(provider, client);
-        this.embeddingModels.set(provider, providerInfo.models[0]);
-        console.log(`✅ ${provider} Embedding loaded from env (${providerInfo.apiKeyEnv})`);
-      }
-    }
-
-    const LLM_FALLBACK_ENV_KEYS: Record<string, string> = {
-      'openai': 'OPENAI_API_KEY',
-      'kimi': 'KIMI_API_KEY',
-      'qwen': 'QWEN_API_KEY',
-      'zhipu': 'ZHIPU_API_KEY',
-      'doubao': 'DOUBAO_API_KEY',
-      'openrouter': 'OPENROUTER_API_KEY',
-    };
-
-    for (const [provider, envKey] of Object.entries(LLM_FALLBACK_ENV_KEYS)) {
-      if (this.openaiClients.has(provider)) continue;
-      if (!EMBEDDING_PROVIDERS[provider]) continue;
-      const apiKey = process.env[envKey];
-      if (apiKey && !isPlaceholderApiKey(apiKey)) {
-        const baseURL = EMBEDDING_PROVIDERS[provider].baseURL;
-        const client = new OpenAI({ apiKey, baseURL });
-        this.openaiClients.set(provider, client);
-        this.embeddingModels.set(provider, EMBEDDING_PROVIDERS[provider].models[0]);
-        console.log(`✅ ${provider} Embedding loaded from LLM env fallback (${envKey})`);
-      }
-    }
-
-    try {
-      const dbConfigs = await EmbeddingConfigModel.findAll();
-      for (const config of dbConfigs) {
-        if (config.provider_key && config.api_key && !isPlaceholderApiKey(config.api_key)) {
-          if (EMBEDDING_PROVIDERS[config.provider_key]) {
-            const providerInfo = EMBEDDING_PROVIDERS[config.provider_key];
-            const client = new OpenAI({
-              apiKey: config.api_key,
-              baseURL: providerInfo.baseURL,
-            });
-            this.openaiClients.set(config.provider_key, client);
-            this.embeddingModels.set(config.provider_key, providerInfo.models[0]);
-            console.log(`✅ ${config.provider_key} Embedding loaded from DB`);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load embedding providers from DB:', error);
-    }
-
-    try {
-      const { LLMConfigModel } = await import('../models/LLMConfig');
-      const llmConfigs = await LLMConfigModel.findAll();
-      for (const config of llmConfigs) {
-        if (this.openaiClients.has(config.provider_key)) continue;
-        if (config.provider_key && config.api_key && !isPlaceholderApiKey(config.api_key)) {
-          if (EMBEDDING_PROVIDERS[config.provider_key]) {
-            const providerInfo = EMBEDDING_PROVIDERS[config.provider_key];
-            const client = new OpenAI({
-              apiKey: config.api_key,
-              baseURL: providerInfo.baseURL,
-            });
-            this.openaiClients.set(config.provider_key, client);
-            this.embeddingModels.set(config.provider_key, providerInfo.models[0]);
-            console.log(`✅ ${config.provider_key} Embedding loaded from LLM DB fallback`);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load embedding providers from LLM DB fallback:', error);
-    }
-
     this.initialized = true;
-    console.log('✅ Embedding providers initialized:', Array.from(this.openaiClients.keys()));
+    console.log('Embedding providers initialized without shared API keys');
   }
 
   async reloadProvider(provider: string, apiKey: string, model?: string): Promise<boolean> {
@@ -195,6 +123,12 @@ class EmbeddingService {
     this.openaiClients.delete(provider);
     this.embeddingModels.delete(provider);
     console.log(`Embedding provider removed: ${provider}`);
+  }
+
+  removeUserProvider(userId: number, provider: string): void {
+    const key = `${userId}:${provider}`;
+    this.userOpenaiClients.delete(key);
+    this.userEmbeddingModels.delete(key);
   }
 
   getAvailableProviders(): string[] {
@@ -243,6 +177,50 @@ class EmbeddingService {
       console.error(`Failed to initialize embedding function for ${provider}:`, error);
       this.embeddingFunction = new DefaultEmbeddingFunction();
     }
+  }
+
+  private async getClientForProvider(provider: string, userId?: number): Promise<OpenAI | null> {
+    if (userId) {
+      const cacheKey = `${userId}:${provider}`;
+      const cached = this.userOpenaiClients.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const config = await EmbeddingConfigModel.findByProvider(userId, provider);
+      const providerInfo = EMBEDDING_PROVIDERS[provider];
+      if (
+        config?.is_active &&
+        config.api_key &&
+        providerInfo &&
+        !isPlaceholderApiKey(config.api_key)
+      ) {
+        const client = new OpenAI({ apiKey: config.api_key, baseURL: providerInfo.baseURL });
+        this.userOpenaiClients.set(cacheKey, client);
+        this.userEmbeddingModels.set(cacheKey, providerInfo.models[0]);
+        return client;
+      }
+    }
+
+    return null;
+  }
+
+  private getModelForProvider(provider: string, userId?: number): string {
+    if (userId) {
+      const scopedModel = this.userEmbeddingModels.get(`${userId}:${provider}`);
+      if (scopedModel) {
+        return scopedModel;
+      }
+    }
+    return this.embeddingModels.get(provider) || this.getEmbeddingModel(provider);
+  }
+
+  private setModelForProvider(provider: string, model: string, userId?: number): void {
+    if (userId) {
+      this.userEmbeddingModels.set(`${userId}:${provider}`, model);
+      return;
+    }
+    this.embeddingModels.set(provider, model);
   }
 
   async getCollection(): Promise<Collection | null> {
@@ -318,15 +296,15 @@ class EmbeddingService {
     }
   }
 
-  async createEmbedding(text: string, provider: string = 'qwen'): Promise<EmbeddingResult | null> {
+  async createEmbedding(text: string, provider: string = 'qwen', userId?: number): Promise<EmbeddingResult | null> {
     try {
-      const client = this.openaiClients.get(provider);
+      const client = await this.getClientForProvider(provider, userId);
 
       if (!client) {
         return this.createDemoEmbedding(text, provider);
       }
 
-      const model = this.embeddingModels.get(provider) || this.getEmbeddingModel(provider);
+      const model = this.getModelForProvider(provider, userId);
       const baseURL = this.getEmbeddingBaseURL(provider);
 
       console.log(`🔄 Creating embedding with ${provider}, model: ${model}, baseURL: ${baseURL}`);
@@ -348,13 +326,13 @@ class EmbeddingService {
         for (const fallbackModel of fallbackModels) {
           try {
             console.error(`   尝试备用模型: ${fallbackModel}...`);
-            const client = this.openaiClients.get(provider) as OpenAI;
+            const client = await this.getClientForProvider(provider, userId) as OpenAI;
             const response = await client.embeddings.create({
               model: fallbackModel,
               input: text,
             });
             console.error(`   ✅ 备用模型 ${fallbackModel} 成功!`);
-            this.embeddingModels.set(provider, fallbackModel);
+            this.setModelForProvider(provider, fallbackModel, userId);
             return {
               embedding: response.data[0].embedding,
               model: fallbackModel,
@@ -411,7 +389,7 @@ class EmbeddingService {
         .replace(/<img\b[^>]*>/gi, '')
         .replace(/!\[[^\]]*]\([^)]*\)/g, '')
         .replace(/<[^>]+>/g, '')}`;
-      const result = await this.createEmbedding(textToEmbed, provider);
+      const result = await this.createEmbedding(textToEmbed, provider, userId);
 
       if (!result) {
         console.error('Failed to create embedding for note', noteId);
@@ -441,7 +419,7 @@ class EmbeddingService {
         return [];
       }
 
-      const queryEmbedding = await this.createEmbedding(query, provider);
+      const queryEmbedding = await this.createEmbedding(query, provider, userId);
       if (!queryEmbedding) {
         return [];
       }
@@ -527,18 +505,29 @@ class EmbeddingService {
     return available[0] || 'demo';
   }
 
+  async getDefaultProviderForUser(userId: number): Promise<string> {
+    const configs = await EmbeddingConfigModel.listMasked(userId);
+    const configured = new Set(
+      configs
+        .filter((config) => config.is_active && config.has_key)
+        .map((config) => config.provider_key)
+    );
+    const preferred = ['qwen', 'openai', 'zhipu', 'kimi', 'doubao', 'openrouter'];
+    return preferred.find((provider) => configured.has(provider)) || 'demo';
+  }
+
   getEmbeddingModels(): Map<string, string> {
     return this.embeddingModels;
   }
 
-  async testConnection(provider: string, model: string): Promise<{ success: boolean; message: string; model?: string }> {
+  async testConnection(provider: string, model: string, userId?: number): Promise<{ success: boolean; message: string; model?: string }> {
     try {
-      const client = this.openaiClients.get(provider);
+      const client = await this.getClientForProvider(provider, userId);
       if (!client) {
         return { success: false, message: `No API key configured for embedding provider: ${provider}` };
       }
 
-      const effectiveModel = model || this.getEmbeddingModel(provider);
+      const effectiveModel = model || this.getModelForProvider(provider, userId);
       const response = await (client as OpenAI).embeddings.create({
         model: effectiveModel,
         input: 'test',

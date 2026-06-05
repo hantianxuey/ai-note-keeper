@@ -82,7 +82,7 @@ export interface ApiKeyInfo {
   provider: string;
   name: string;
   hasKey: boolean;
-  source?: 'env' | 'database';
+  source?: 'env' | 'database' | 'none';
 }
 
 interface LLMConfig {

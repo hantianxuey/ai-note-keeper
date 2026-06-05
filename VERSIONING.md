@@ -79,6 +79,13 @@ AI Note Keeper uses semantic versioning for code releases.
 - Registration shows a success notice after verification-code delivery and enforces a client-side resend cooldown.
 - Production PM2 limits Node heap usage and skips startup reindex by default to reduce memory pressure on small ECS instances.
 
+`1.9.3` is a patch release focused on per-user provider isolation:
+
+- LLM and embedding API keys are stored and listed by authenticated user instead of global provider records.
+- Runtime LLM and embedding calls only use demo mode or the current user's own saved provider key.
+- Server-level LLM/embedding environment variables are no longer exposed as user-configured providers.
+- Legacy global database API keys are assigned to `1206677183@qq.com` during migration when that user exists.
+
 ## Server Storage Policy
 
 - Keep the newest 5 deployment releases by default.

@@ -114,8 +114,8 @@ class VectorSearchService {
     }
   }
 
-  private getDefaultProvider(): string {
-    return embeddingService.getDefaultProvider();
+  private getDefaultProvider(userId: number): Promise<string> {
+    return embeddingService.getDefaultProviderForUser(userId);
   }
 
   async indexNote(noteId: number, userId: number, title: string, content: string, provider?: string): Promise<void> {
@@ -123,7 +123,7 @@ class VectorSearchService {
       const ready = await this.ensureChunkTable();
       if (!ready) return;
 
-      const effectiveProvider = provider || this.getDefaultProvider();
+      const effectiveProvider = provider || await this.getDefaultProvider(userId);
       const plainContent = content
         .replace(/<img\b[^>]*>/gi, '')
         .replace(/!\[[^\]]*]\([^)]*\)/g, '')
@@ -171,7 +171,7 @@ class VectorSearchService {
         return [];
       }
 
-      const effectiveProvider = provider || this.getDefaultProvider();
+      const effectiveProvider = provider || await this.getDefaultProvider(userId);
       console.log(`📌 Using embedding provider: ${effectiveProvider}`);
       let results: Array<{ note_id: number; title: string; snippet: string; rank: number; source: string }> = [];
       let fallbackCount = 0;
@@ -393,7 +393,7 @@ class VectorSearchService {
       const ready = await this.ensureChunkTable();
       if (!ready) return 0;
 
-      const defaultProvider = this.getDefaultProvider();
+      const defaultProvider = 'demo';
       console.log(`🔄 Reindexing all notes with provider: ${defaultProvider}`);
 
       const result = await pool.query('SELECT id, user_id, title, content FROM notes');

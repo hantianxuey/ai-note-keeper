@@ -3,6 +3,7 @@ import { decryptSecret, encryptSecret } from '../config/secrets';
 
 interface EmbeddingConfigRow {
   id: number;
+  user_id: number | null;
   provider_key: string;
   api_key: string;
   is_active: boolean;
@@ -18,43 +19,44 @@ const decryptRow = (row: EmbeddingConfigRow): EmbeddingConfigRow => ({
 export const EmbeddingConfigModel = {
   async findAll(): Promise<EmbeddingConfigRow[]> {
     const result = await pool.query(
-      'SELECT id, provider_key, api_key, is_active, created_at, updated_at FROM embedding_configs ORDER BY provider_key'
+      'SELECT id, user_id, provider_key, api_key, is_active, created_at, updated_at FROM embedding_configs WHERE user_id IS NULL ORDER BY provider_key'
     );
     return result.rows.map(decryptRow);
   },
 
-  async findByProvider(providerKey: string): Promise<EmbeddingConfigRow | null> {
+  async findByProvider(userId: number, providerKey: string): Promise<EmbeddingConfigRow | null> {
     const result = await pool.query(
-      'SELECT * FROM embedding_configs WHERE provider_key = $1',
-      [providerKey]
+      'SELECT * FROM embedding_configs WHERE user_id = $1 AND provider_key = $2',
+      [userId, providerKey]
     );
     return result.rows[0] ? decryptRow(result.rows[0]) : null;
   },
 
-  async upsert(providerKey: string, apiKey: string): Promise<EmbeddingConfigRow> {
+  async upsert(userId: number, providerKey: string, apiKey: string): Promise<EmbeddingConfigRow> {
     const encryptedApiKey = encryptSecret(apiKey);
     const result = await pool.query(
-      `INSERT INTO embedding_configs (provider_key, api_key, is_active, updated_at)
-       VALUES ($1, $2, true, NOW())
-       ON CONFLICT (provider_key)
-       DO UPDATE SET api_key = $2, is_active = true, updated_at = NOW()
+      `INSERT INTO embedding_configs (user_id, provider_key, api_key, is_active, updated_at)
+       VALUES ($1, $2, $3, true, NOW())
+       ON CONFLICT (user_id, provider_key)
+       DO UPDATE SET api_key = $3, is_active = true, updated_at = NOW()
        RETURNING *`,
-      [providerKey, encryptedApiKey]
+      [userId, providerKey, encryptedApiKey]
     );
     return decryptRow(result.rows[0]);
   },
 
-  async delete(providerKey: string): Promise<boolean> {
+  async delete(userId: number, providerKey: string): Promise<boolean> {
     const result = await pool.query(
-      'DELETE FROM embedding_configs WHERE provider_key = $1',
-      [providerKey]
+      'DELETE FROM embedding_configs WHERE user_id = $1 AND provider_key = $2',
+      [userId, providerKey]
     );
     return (result.rowCount || 0) > 0;
   },
 
-  async listMasked(): Promise<Array<{ provider_key: string; is_active: boolean; has_key: boolean }>> {
+  async listMasked(userId: number): Promise<Array<{ provider_key: string; is_active: boolean; has_key: boolean }>> {
     const result = await pool.query(
-      'SELECT provider_key, is_active, CASE WHEN api_key IS NOT NULL AND api_key != \'\' THEN true ELSE false END as has_key FROM embedding_configs ORDER BY provider_key'
+      'SELECT provider_key, is_active, CASE WHEN api_key IS NOT NULL AND api_key != \'\' THEN true ELSE false END as has_key FROM embedding_configs WHERE user_id = $1 ORDER BY provider_key',
+      [userId]
     );
     return result.rows;
   },

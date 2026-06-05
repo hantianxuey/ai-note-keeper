@@ -19,9 +19,9 @@ export const askQuestion = async (
       return next(new AppError('Question is required', 400));
     }
 
-    const finalProvider = provider || process.env.DEFAULT_LLM_PROVIDER || 'demo';
-    const finalModel = model || process.env.DEFAULT_LLM_MODEL || 'demo-chat';
-    const finalEmbeddingProvider = embeddingProvider || embeddingService.getDefaultProvider();
+    const finalProvider = provider || 'demo';
+    const finalModel = model || 'demo-chat';
+    const finalEmbeddingProvider = embeddingProvider || await embeddingService.getDefaultProviderForUser(userId);
 
     let conversation = conversationId
       ? await ConversationModel.findById(conversationId, userId)
@@ -44,7 +44,7 @@ export const askQuestion = async (
       provider: finalProvider,
       model: finalModel,
       temperature: 0.7,
-    });
+    }, userId);
 
     const assistantMessage = {
       role: 'assistant' as const,

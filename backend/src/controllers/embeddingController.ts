@@ -5,6 +5,7 @@ import { EMBEDDING_PROVIDERS } from '../types/llm';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
+import { requireUserId } from './controllerUtils';
 
 export const getEmbeddingProviders = async (
   req: AuthRequest,
@@ -12,13 +13,13 @@ export const getEmbeddingProviders = async (
   next: NextFunction
 ) => {
   try {
-    const dbConfigs = await EmbeddingConfigModel.listMasked();
+    const userId = requireUserId(req);
+    const dbConfigs = await EmbeddingConfigModel.listMasked(userId);
     const dbConfigMap = new Map(dbConfigs.map((c) => [c.provider_key, c]));
 
     const allProviders = Object.entries(EMBEDDING_PROVIDERS).map(([key, provider]) => {
       const dbConfig = dbConfigMap.get(key);
-      const envKey = process.env[provider.apiKeyEnv];
-      const hasKey = !!(envKey || (dbConfig && dbConfig.has_key));
+      const hasKey = !!(dbConfig && dbConfig.has_key);
       return {
         key,
         name: provider.name,
@@ -26,7 +27,7 @@ export const getEmbeddingProviders = async (
         baseURL: provider.baseURL,
         apiKeyEnv: provider.apiKeyEnv,
         hasKey,
-        isActive: dbConfig ? dbConfig.is_active : !!envKey,
+        isActive: dbConfig ? dbConfig.is_active : false,
       };
     });
 
@@ -61,7 +62,7 @@ export const testEmbeddingConnection = async (
 ) => {
   try {
     const { provider, model } = req.body;
-    const result = await embeddingService.testConnection(provider, model);
+    const result = await embeddingService.testConnection(provider, model, requireUserId(req));
     res.json(result);
   } catch (error: any) {
     res.json({
@@ -79,6 +80,7 @@ export const saveEmbeddingApiKey = async (
   try {
     const { provider } = req.body;
     const apiKey = readSensitiveField(req.body, 'apiKey');
+    const userId = requireUserId(req);
 
     if (!provider || !apiKey) {
       return next(new AppError('Provider and apiKey are required', 400));
@@ -88,8 +90,8 @@ export const saveEmbeddingApiKey = async (
       return next(new AppError('Unknown embedding provider: ' + provider, 400));
     }
 
-    await EmbeddingConfigModel.upsert(provider, apiKey);
-    await embeddingService.reloadProvider(provider, apiKey);
+    await EmbeddingConfigModel.upsert(userId, provider, apiKey);
+    embeddingService.removeUserProvider(userId, provider);
 
     res.json({
       success: true,
@@ -107,13 +109,14 @@ export const deleteEmbeddingApiKey = async (
 ) => {
   try {
     const { provider } = req.params;
+    const userId = requireUserId(req);
 
     if (!EMBEDDING_PROVIDERS[provider]) {
       return next(new AppError('Unknown embedding provider: ' + provider, 400));
     }
 
-    await EmbeddingConfigModel.delete(provider);
-    embeddingService.removeProvider(provider);
+    await EmbeddingConfigModel.delete(userId, provider);
+    embeddingService.removeUserProvider(userId, provider);
 
     res.json({
       success: true,
@@ -130,18 +133,18 @@ export const getEmbeddingApiKeys = async (
   next: NextFunction
 ) => {
   try {
-    const dbConfigs = await EmbeddingConfigModel.listMasked();
+    const userId = requireUserId(req);
+    const dbConfigs = await EmbeddingConfigModel.listMasked(userId);
     const dbConfigMap = new Map(dbConfigs.map((c) => [c.provider_key, c]));
 
     const keys = Object.entries(EMBEDDING_PROVIDERS).map(([key, provider]) => {
       const dbConfig = dbConfigMap.get(key);
-      const envKey = process.env[provider.apiKeyEnv];
       return {
         provider: key,
         name: provider.name,
-        hasKey: !!(envKey || (dbConfig && dbConfig.has_key)),
-        source: envKey ? 'env' : (dbConfig && dbConfig.has_key) ? 'database' : 'none',
-        isActive: dbConfig ? dbConfig.is_active : !!envKey,
+        hasKey: !!(dbConfig && dbConfig.has_key),
+        source: (dbConfig && dbConfig.has_key) ? 'database' : 'none',
+        isActive: dbConfig ? dbConfig.is_active : false,
       };
     });
 

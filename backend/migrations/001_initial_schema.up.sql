@@ -32,20 +32,24 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 CREATE TABLE IF NOT EXISTS llm_configs (
   id SERIAL PRIMARY KEY,
-  provider_key VARCHAR(50) UNIQUE NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  provider_key VARCHAR(50) NOT NULL,
   api_key TEXT NOT NULL,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT llm_configs_user_provider_key UNIQUE (user_id, provider_key)
 );
 
 CREATE TABLE IF NOT EXISTS embedding_configs (
   id SERIAL PRIMARY KEY,
-  provider_key VARCHAR(100) UNIQUE NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  provider_key VARCHAR(100) NOT NULL,
   api_key TEXT NOT NULL,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT embedding_configs_user_provider_key UNIQUE (user_id, provider_key)
 );
 
 CREATE TABLE IF NOT EXISTS note_chunks (
@@ -61,8 +65,8 @@ CREATE TABLE IF NOT EXISTS note_chunks (
 CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
 CREATE INDEX IF NOT EXISTS idx_notes_summary_cache ON notes(id, user_id, ai_summary_content_hash);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
-CREATE INDEX IF NOT EXISTS idx_llm_configs_provider_key ON llm_configs(provider_key);
-CREATE INDEX IF NOT EXISTS idx_embedding_configs_provider_key ON embedding_configs(provider_key);
+CREATE INDEX IF NOT EXISTS idx_llm_configs_user_id ON llm_configs(user_id);
+CREATE INDEX IF NOT EXISTS idx_embedding_configs_user_id ON embedding_configs(user_id);
 CREATE INDEX IF NOT EXISTS idx_notes_search ON notes USING GIN (to_tsvector('english', title || ' ' || content));
 CREATE INDEX IF NOT EXISTS idx_note_chunks_note_id ON note_chunks(note_id);
 CREATE INDEX IF NOT EXISTS idx_note_chunks_user_id ON note_chunks(user_id);

@@ -18,14 +18,14 @@ export const getProviders = async (
   next: NextFunction
 ) => {
   try {
-    const dbConfigs = await LLMConfigModel.listMasked();
+    const userId = requireUserId(req);
+    const dbConfigs = await LLMConfigModel.listMasked(userId);
     const dbConfigMap = new Map(dbConfigs.map((c) => [c.provider_key, c]));
 
     const allProviders = Object.keys(LLM_PROVIDERS).map((key) => {
       const provider = LLM_PROVIDERS[key];
       const dbConfig = dbConfigMap.get(key);
-      const envKey = process.env[provider.apiKeyEnv];
-      const hasKey = !!(envKey || (dbConfig && dbConfig.has_key));
+      const hasKey = !!(provider.isDemo || (dbConfig && dbConfig.has_key));
       return {
         key,
         name: provider.name,
@@ -33,7 +33,7 @@ export const getProviders = async (
         baseURL: provider.baseURL,
         apiKeyEnv: provider.apiKeyEnv,
         hasKey,
-        isActive: dbConfig ? dbConfig.is_active : !!envKey,
+        isActive: provider.isDemo ? true : dbConfig ? dbConfig.is_active : false,
       };
     });
 
@@ -86,10 +86,12 @@ export const testConnection = async (
 ) => {
   try {
     const { provider, model } = req.body;
+    const userId = requireUserId(req);
 
     const result = await llmService.chatCompletion(
       [{ role: 'user', content: 'Hello, please reply with "OK" in one word.' }],
-      { provider, model, temperature: 0 }
+      { provider, model, temperature: 0 },
+      userId
     );
 
     res.json({
@@ -114,6 +116,7 @@ export const generateSummary = async (
 ) => {
   try {
     const { content, provider, model, noteId } = req.body;
+    const userId = requireUserId(req);
 
     if (!content) {
       return next(new AppError('Content is required', 400));
@@ -124,7 +127,6 @@ export const generateSummary = async (
     const contentHash = summaryContentHash(content);
 
     if (canCache) {
-      const userId = requireUserId(req);
       const note = await NoteModel.findById(noteIdNumber, userId);
       if (!note) {
         return next(new AppError('Note not found', 404));
@@ -138,13 +140,13 @@ export const generateSummary = async (
     }
 
     const summary = await llmService.generateSummary(content, {
-      provider: provider || process.env.DEFAULT_LLM_PROVIDER || 'demo',
-      model: model || process.env.DEFAULT_LLM_MODEL || 'demo-chat',
+      provider: provider || 'demo',
+      model: model || 'demo-chat',
       temperature: 0.5,
-    });
+    }, userId);
 
     if (canCache) {
-      await NoteModel.updateSummary(noteIdNumber, requireUserId(req), summary, contentHash);
+      await NoteModel.updateSummary(noteIdNumber, userId, summary, contentHash);
     }
 
     res.json({ summary, cached: false });
@@ -160,16 +162,17 @@ export const extractKeywords = async (
 ) => {
   try {
     const { content, provider, model } = req.body;
+    const userId = requireUserId(req);
 
     if (!content) {
       return next(new AppError('Content is required', 400));
     }
 
     const keywords = await llmService.extractKeywords(content, {
-      provider: provider || process.env.DEFAULT_LLM_PROVIDER || 'demo',
-      model: model || process.env.DEFAULT_LLM_MODEL || 'demo-chat',
+      provider: provider || 'demo',
+      model: model || 'demo-chat',
       temperature: 0.3,
-    });
+    }, userId);
 
     res.json({ keywords });
   } catch (error) {
@@ -184,16 +187,17 @@ export const rewriteNote = async (
 ) => {
   try {
     const { content, instruction, provider, model } = req.body;
+    const userId = requireUserId(req);
 
     if (!content) {
       return next(new AppError('Content is required', 400));
     }
 
     const rewritten = await llmService.rewriteNote(content, instruction, {
-      provider: provider || process.env.DEFAULT_LLM_PROVIDER || 'demo',
-      model: model || process.env.DEFAULT_LLM_MODEL || 'demo-chat',
+      provider: provider || 'demo',
+      model: model || 'demo-chat',
       temperature: 0.7,
-    });
+    }, userId);
 
     res.json({ rewritten });
   } catch (error) {
@@ -208,17 +212,18 @@ export const chatCompletion = async (
 ) => {
   try {
     const { messages, provider, model, temperature, maxTokens } = req.body;
+    const userId = requireUserId(req);
 
     if (!messages || !Array.isArray(messages)) {
       return next(new AppError('Messages array is required', 400));
     }
 
     const result = await llmService.chatCompletion(messages, {
-      provider: provider || process.env.DEFAULT_LLM_PROVIDER || 'demo',
-      model: model || process.env.DEFAULT_LLM_MODEL || 'demo-chat',
+      provider: provider || 'demo',
+      model: model || 'demo-chat',
       temperature: temperature ?? 0.7,
       maxTokens: maxTokens ?? 2000,
-    });
+    }, userId);
 
     res.json(result);
   } catch (error) {
@@ -234,6 +239,7 @@ export const saveApiKey = async (
   try {
     const { provider } = req.body;
     const apiKey = readSensitiveField(req.body, 'apiKey');
+    const userId = requireUserId(req);
 
     if (!provider || !apiKey) {
       return next(new AppError('Provider and apiKey are required', 400));
@@ -243,8 +249,8 @@ export const saveApiKey = async (
       return next(new AppError('Unknown provider: ' + provider, 400));
     }
 
-    await LLMConfigModel.upsert(provider, apiKey);
-    await llmService.reloadProvider(provider, apiKey);
+    await LLMConfigModel.upsert(userId, provider, apiKey);
+    llmService.removeUserProvider(userId, provider);
 
     res.json({
       success: true,
@@ -262,13 +268,14 @@ export const deleteApiKey = async (
 ) => {
   try {
     const { provider } = req.params;
+    const userId = requireUserId(req);
 
     if (!LLM_PROVIDERS[provider]) {
       return next(new AppError('Unknown provider: ' + provider, 400));
     }
 
-    await LLMConfigModel.delete(provider);
-    llmService.removeProvider(provider);
+    await LLMConfigModel.delete(userId, provider);
+    llmService.removeUserProvider(userId, provider);
 
     res.json({
       success: true,
@@ -285,19 +292,19 @@ export const getApiKeys = async (
   next: NextFunction
 ) => {
   try {
-    const dbConfigs = await LLMConfigModel.listMasked();
+    const userId = requireUserId(req);
+    const dbConfigs = await LLMConfigModel.listMasked(userId);
     const dbConfigMap = new Map(dbConfigs.map((c) => [c.provider_key, c]));
 
     const keys = Object.keys(LLM_PROVIDERS).map((key) => {
       const provider = LLM_PROVIDERS[key];
       const dbConfig = dbConfigMap.get(key);
-      const envKey = process.env[provider.apiKeyEnv];
       return {
         provider: key,
         name: provider.name,
-        hasKey: !!(envKey || (dbConfig && dbConfig.has_key)),
-        source: envKey ? 'env' : (dbConfig && dbConfig.has_key) ? 'database' : 'none',
-        isActive: dbConfig ? dbConfig.is_active : !!envKey,
+        hasKey: !!(provider.isDemo || (dbConfig && dbConfig.has_key)),
+        source: (dbConfig && dbConfig.has_key) ? 'database' : 'none',
+        isActive: provider.isDemo ? true : dbConfig ? dbConfig.is_active : false,
       };
     });
 

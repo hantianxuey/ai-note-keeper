@@ -51,6 +51,7 @@ function generateDemoResponse(messages: LLMMessage[], config: LLMConfig): LLMRes
 
 class LLMService {
   private providers: Map<string, OpenAI | null> = new Map();
+  private userProviders: Map<string, OpenAI> = new Map();
 
   constructor() {
     this.initProviders();
@@ -59,8 +60,7 @@ class LLMService {
   private async initProviders() {
     this.providers.set('demo', null);
     console.log('LLM Provider loaded: Demo (Free)');
-    await this.loadFromEnv();
-    await this.loadFromDatabase();
+    // Do not load shared providers. Users may only use demo or their own saved keys.
     console.log('✅ All available providers:', Array.from(this.providers.keys()));
   }
 
@@ -124,6 +124,10 @@ class LLMService {
     }
   }
 
+  removeUserProvider(userId: number, providerKey: string): void {
+    this.userProviders.delete(`${userId}:${providerKey}`);
+  }
+
   getAvailableProviders(): string[] {
     return Array.from(this.providers.keys());
   }
@@ -163,16 +167,46 @@ class LLMService {
     return client;
   }
 
+  private async getClientForUser(providerKey: string, userId?: number): Promise<OpenAI> {
+    if (userId) {
+      const cacheKey = `${userId}:${providerKey}`;
+      const cached = this.userProviders.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const config = await LLMConfigModel.findByProvider(userId, providerKey);
+      const provider = LLM_PROVIDERS[providerKey];
+      if (
+        config?.is_active &&
+        config.api_key &&
+        provider &&
+        !provider.isDemo &&
+        !isPlaceholderApiKey(config.api_key)
+      ) {
+        const client = new OpenAI({
+          apiKey: config.api_key,
+          baseURL: provider.baseURL,
+        });
+        this.userProviders.set(cacheKey, client);
+        return client;
+      }
+    }
+
+    throw new Error('LLM provider not configured for current user: ' + providerKey);
+  }
+
   async chatCompletion(
     messages: LLMMessage[],
-    config: LLMConfig
+    config: LLMConfig,
+    userId?: number
   ): Promise<LLMResponse> {
     if (config.provider === 'demo' || LLM_PROVIDERS[config.provider]?.isDemo) {
       await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1000));
       return generateDemoResponse(messages, config);
     }
 
-    const client = this.getClient(config.provider);
+    const client = await this.getClientForUser(config.provider, userId);
     console.log('Calling LLM:', {
       provider: config.provider,
       model: config.model,
@@ -222,35 +256,36 @@ class LLMService {
   async createEmbedding(
     text: string,
     provider: string,
-    model: string
+    model: string,
+    userId?: number
   ): Promise<number[]> {
     if (provider === 'demo') {
       return Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
     }
-    const client = this.getClient(provider);
+    const client = await this.getClientForUser(provider, userId);
     const response = await client.embeddings.create({ model, input: text });
     return response.data[0].embedding;
   }
 
-  async generateSummary(content: string, config: LLMConfig): Promise<string> {
+  async generateSummary(content: string, config: LLMConfig, userId?: number): Promise<string> {
     const messages: LLMMessage[] = [
       { role: 'system', content: 'You are a professional note assistant. Please summarize the following note content concisely, highlighting key points. Answer in the same language as the content.' },
       { role: 'user', content: 'Please summarize the following note:\n\n' + content },
     ];
-    const response = await this.chatCompletion(messages, config);
+    const response = await this.chatCompletion(messages, config, userId);
     return response.content;
   }
 
-  async extractKeywords(content: string, config: LLMConfig): Promise<string[]> {
+  async extractKeywords(content: string, config: LLMConfig, userId?: number): Promise<string[]> {
     const messages: LLMMessage[] = [
       { role: 'system', content: 'You are a professional note assistant. Please extract 5-10 keywords from the following note, separated by commas. Answer in the same language as the content.' },
       { role: 'user', content: 'Please extract keywords from the following note:\n\n' + content },
     ];
-    const response = await this.chatCompletion(messages, config);
+    const response = await this.chatCompletion(messages, config, userId);
     return response.content.split(',').map((k) => k.trim()).filter((k) => k.length > 0);
   }
 
-  async rewriteNote(content: string, instruction: string | undefined, config: LLMConfig): Promise<string> {
+  async rewriteNote(content: string, instruction: string | undefined, config: LLMConfig, userId?: number): Promise<string> {
     const systemPrompt = instruction
       ? 'You are a professional writing assistant. Please optimize the following note according to the user request: ' + instruction
       : 'You are a professional writing assistant. Please optimize the following note to make it clearer, more organized, and easier to read.';
@@ -258,11 +293,11 @@ class LLMService {
       { role: 'system', content: systemPrompt },
       { role: 'user', content: 'Please optimize the following note:\n\n' + content },
     ];
-    const response = await this.chatCompletion(messages, config);
+    const response = await this.chatCompletion(messages, config, userId);
     return response.content;
   }
 
-  async ragAnswer(question: string, context: string[], config: LLMConfig): Promise<string> {
+  async ragAnswer(question: string, context: string[], config: LLMConfig, userId?: number): Promise<string> {
     const contextText = context.join('\n\n---\n\n');
     if (contextText.trim().length === 0) {
       return /[\u4e00-\u9fff]/.test(question)
@@ -274,7 +309,7 @@ class LLMService {
       { role: 'system', content: 'You are a trustworthy knowledge-base Q&A assistant. Answer only from the Reference context below. Cite every factual claim with source numbers like [1] or [2], matching the [Source N: "title"] labels. If the Reference context does not contain enough information, say that the knowledge base has no reliable basis for the answer. If the context is empty or only demo fallback content, do not invent an answer or citations. Answer in the same language as the question.\n\nReference context:\n' + contextText },
       { role: 'user', content: question },
     ];
-    const response = await this.chatCompletion(messages, config);
+    const response = await this.chatCompletion(messages, config, userId);
     return response.content;
   }
 }
