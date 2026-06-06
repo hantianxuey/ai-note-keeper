@@ -288,20 +288,11 @@ const askWithRetry = async (
 };
 
 export const runRagEval = async (apiUrl: string) => {
-  const token = await registerEvalUser(apiUrl);
   const results: RagEvalResult[] = [];
-  const emptyContextCases = evalCases.filter((evalCase) => evalCase.expectRefusal);
-  const retrievalCases = evalCases.filter((evalCase) => !evalCase.expectRefusal);
 
-  for (const evalCase of emptyContextCases) {
-    results.push(await askWithRetry(apiUrl, token, evalCase));
-  }
-
-  for (const evalCase of retrievalCases) {
+  for (const evalCase of evalCases) {
+    const token = await registerEvalUser(apiUrl);
     await createEvalNote(apiUrl, token, evalCase);
-  }
-
-  for (const evalCase of retrievalCases) {
     results.push(await askWithRetry(apiUrl, token, evalCase));
   }
 
