@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { scoreRagEvalResults } from './ragEval';
 
 describe('scoreRagEvalResults', () => {
-  it('calculates citation hit rate and pass status', () => {
+  it('calculates retrieval, citation, and refusal quality', () => {
     const summary = scoreRagEvalResults([
       {
         name: 'deployment rollback',
@@ -17,19 +17,35 @@ describe('scoreRagEvalResults', () => {
         name: 'rag eval',
         expectedCitationTitle: 'RAG Quality Notes',
         answer: 'Use recall and citation hit rate.',
-        citations: [{ noteTitle: 'Observability Notes' }],
+        citations: [
+          { noteTitle: 'RAG Quality Notes' },
+          { noteTitle: 'Observability Notes' },
+        ],
+      },
+      {
+        name: 'empty context',
+        expectRefusal: true,
+        answer: 'I could not find reliable information in the knowledge base to answer this question.',
+        citations: [],
       },
     ], {
-      minCitationHitRate: 0.5,
+      minRetrievalRecall: 1,
+      minCitationAccuracy: 0.5,
+      minEmptyContextRefusalRate: 1,
     });
 
-    expect(summary.totalCases).toBe(2);
-    expect(summary.citationHits).toBe(1);
-    expect(summary.citationHitRate).toBe(0.5);
+    expect(summary.totalCases).toBe(3);
+    expect(summary.relevantCases).toBe(2);
+    expect(summary.retrievalHits).toBe(2);
+    expect(summary.retrievalRecall).toBe(1);
+    expect(summary.citationAccuracy).toBe(0.5);
+    expect(summary.emptyContextCases).toBe(1);
+    expect(summary.emptyContextRefusals).toBe(1);
+    expect(summary.emptyContextRefusalRate).toBe(1);
     expect(summary.passed).toBe(true);
   });
 
-  it('fails when citation quality is below the threshold', () => {
+  it('fails when any quality gate is below threshold', () => {
     const summary = scoreRagEvalResults([
       {
         name: 'rag eval',
@@ -37,11 +53,21 @@ describe('scoreRagEvalResults', () => {
         answer: 'Use recall and citation hit rate.',
         citations: [{ noteTitle: 'Observability Notes' }],
       },
+      {
+        name: 'empty context',
+        expectRefusal: true,
+        answer: 'Here is an unsupported answer.',
+        citations: [],
+      },
     ], {
-      minCitationHitRate: 1,
+      minRetrievalRecall: 1,
+      minCitationAccuracy: 1,
+      minEmptyContextRefusalRate: 1,
     });
 
-    expect(summary.citationHitRate).toBe(0);
+    expect(summary.retrievalRecall).toBe(0);
+    expect(summary.citationAccuracy).toBe(0);
+    expect(summary.emptyContextRefusalRate).toBe(0);
     expect(summary.passed).toBe(false);
   });
 });

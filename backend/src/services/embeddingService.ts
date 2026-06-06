@@ -41,15 +41,12 @@ class EmbeddingService {
   private userOpenaiClients: Map<string, OpenAI> = new Map();
   private userEmbeddingModels: Map<string, string> = new Map();
   private embeddingFunction: DefaultEmbeddingFunction | EmbeddingFunction | null = null;
-  private initialized = false;
-  private currentEmbeddingProvider: string = 'qwen';
   private chromaUrl = resolveChromaUrl();
 
   constructor() {
     this.initChroma();
     this.initOpenAI().catch((error) => {
       console.warn('Embedding provider initialization failed:', error);
-      this.initialized = true;
     });
   }
 
@@ -85,7 +82,6 @@ class EmbeddingService {
   }
 
   private async initOpenAI() {
-    this.initialized = true;
     console.log('Embedding providers initialized without shared API keys');
   }
 
@@ -171,7 +167,6 @@ class EmbeddingService {
       }
 
       this.embeddingFunction = new DefaultEmbeddingFunction();
-      this.currentEmbeddingProvider = provider;
       console.log(`✅ Embedding function initialized for ${provider}`);
     } catch (error) {
       console.error(`Failed to initialize embedding function for ${provider}:`, error);

@@ -57,48 +57,11 @@ class LLMService {
     this.initProviders();
   }
 
-  private async initProviders() {
+  private initProviders() {
     this.providers.set('demo', null);
     console.log('LLM Provider loaded: Demo (Free)');
     // Do not load shared providers. Users may only use demo or their own saved keys.
     console.log('✅ All available providers:', Array.from(this.providers.keys()));
-  }
-
-  private async loadFromEnv() {
-    Object.entries(LLM_PROVIDERS).forEach(([key, provider]) => {
-      if (provider.isDemo) return;
-      const apiKey = process.env[provider.apiKeyEnv];
-      if (apiKey && !isPlaceholderApiKey(apiKey)) {
-        const client = new OpenAI({
-          apiKey,
-          baseURL: provider.baseURL,
-        });
-        this.providers.set(key, client);
-        console.log('LLM Provider loaded from env: ' + provider.name);
-      }
-    });
-  }
-
-  private async loadFromDatabase() {
-    try {
-      const configs = await LLMConfigModel.findAll();
-      console.log('Loading', configs.length, 'providers from database...');
-      for (const config of configs) {
-        if (config.is_active && config.api_key && !isPlaceholderApiKey(config.api_key)) {
-          const provider = LLM_PROVIDERS[config.provider_key];
-          if (provider && !provider.isDemo && !this.providers.has(config.provider_key)) {
-            const client = new OpenAI({
-              apiKey: config.api_key,
-              baseURL: provider.baseURL,
-            });
-            this.providers.set(config.provider_key, client);
-            console.log('✅ LLM Provider loaded from DB:', provider.name, '(', config.provider_key, ')');
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error loading from DB:', error);
-    }
   }
 
   async reloadProvider(providerKey: string, apiKey: string): Promise<void> {
@@ -157,14 +120,6 @@ class LLMService {
       });
     });
     return models;
-  }
-
-  private getClient(provider: string): OpenAI {
-    const client = this.providers.get(provider);
-    if (!client) {
-      throw new Error('LLM provider not configured: ' + provider);
-    }
-    return client;
   }
 
   private async getClientForUser(providerKey: string, userId?: number): Promise<OpenAI> {

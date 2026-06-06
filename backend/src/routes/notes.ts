@@ -8,14 +8,16 @@ import {
   searchNotes,
 } from '../controllers/noteController';
 import { authenticate } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import { noteInputSchema } from '../schemas/apiSchemas';
 
 const router = express.Router();
 
 router.get('/', authenticate, listNotes);
 router.get('/search', authenticate, searchNotes);
 router.get('/:id', authenticate, getNote);
-router.post('/', authenticate, createNote);
-router.put('/:id', authenticate, updateNote);
+router.post('/', authenticate, validateBody(noteInputSchema), createNote);
+router.put('/:id', authenticate, validateBody(noteInputSchema), updateNote);
 router.delete('/:id', authenticate, deleteNote);
 
 export default router;

@@ -131,7 +131,7 @@ export const deleteConversation = async (
 };
 
 export const reindexNotes = async (
-  req: AuthRequest,
+  _req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {

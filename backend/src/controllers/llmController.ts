@@ -7,6 +7,7 @@ import { LLM_PROVIDERS } from '../types/llm';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
+import { recordAuditEvent } from '../services/auditService';
 import { requireUserId } from './controllerUtils';
 
 const summaryContentHash = (content: string) =>
@@ -67,7 +68,7 @@ export const getModels = (
 };
 
 export const getAllModels = (
-  req: AuthRequest,
+  _req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -82,7 +83,7 @@ export const getAllModels = (
 export const testConnection = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   try {
     const { provider, model } = req.body;
@@ -251,6 +252,12 @@ export const saveApiKey = async (
 
     await LLMConfigModel.upsert(userId, provider, apiKey);
     llmService.removeUserProvider(userId, provider);
+    recordAuditEvent({
+      event: 'provider_key.llm.save',
+      outcome: 'success',
+      userId,
+      metadata: { provider },
+    });
 
     res.json({
       success: true,
@@ -276,6 +283,12 @@ export const deleteApiKey = async (
 
     await LLMConfigModel.delete(userId, provider);
     llmService.removeUserProvider(userId, provider);
+    recordAuditEvent({
+      event: 'provider_key.llm.delete',
+      outcome: 'success',
+      userId,
+      metadata: { provider },
+    });
 
     res.json({
       success: true,

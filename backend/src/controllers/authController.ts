@@ -6,6 +6,7 @@ import { AuthRequest } from '../middleware/auth';
 import { asyncHandler, publicUser, requireFields, requireUserId } from './controllerUtils';
 import { readSensitiveField } from '../config/requestEncryption';
 import { emailVerificationService } from '../services/emailVerificationService';
+import { recordAuditEvent } from '../services/auditService';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -60,6 +61,7 @@ export const register = asyncHandler(async (req: AuthRequest, res) => {
 
   const token = signUserToken(user.id);
   setAuthCookie(res, token);
+  recordAuditEvent({ event: 'auth.register', outcome: 'success', userId: user.id, subject: email });
 
   res.status(201).json({
     token,
@@ -77,16 +79,19 @@ export const login = asyncHandler(async (req: AuthRequest, res) => {
 
   const user = await UserModel.findByEmail(email);
   if (!user) {
+    recordAuditEvent({ event: 'auth.login', outcome: 'failure', subject: email });
     throw new AppError('Invalid email or password', 401);
   }
 
   const isValidPassword = await bcrypt.compare(password, user.password_hash);
   if (!isValidPassword) {
+    recordAuditEvent({ event: 'auth.login', outcome: 'failure', userId: user.id, subject: email });
     throw new AppError('Invalid email or password', 401);
   }
 
   const token = signUserToken(user.id);
   setAuthCookie(res, token);
+  recordAuditEvent({ event: 'auth.login', outcome: 'success', userId: user.id, subject: email });
 
   res.json({
     token,
@@ -94,7 +99,8 @@ export const login = asyncHandler(async (req: AuthRequest, res) => {
   });
 });
 
-export const logout = asyncHandler(async (_req: AuthRequest, res) => {
+export const logout = asyncHandler(async (req: AuthRequest, res) => {
+  recordAuditEvent({ event: 'auth.logout', outcome: 'success', userId: req.userId });
   res.clearCookie('auth_token', { path: '/' });
   res.status(204).end();
 });
@@ -113,6 +119,7 @@ export const sendVerificationCode = asyncHandler(async (req: AuthRequest, res) =
   }
 
   const result = await emailVerificationService.createAndSend(email);
+  recordAuditEvent({ event: 'auth.verification_code', outcome: 'success', subject: email });
   res.json({
     message: 'Verification code sent',
     ...result,
@@ -133,6 +140,7 @@ export const sendPasswordResetCode = asyncHandler(async (req: AuthRequest, res) 
   }
 
   const result = await emailVerificationService.createAndSend(email);
+  recordAuditEvent({ event: 'auth.password_reset_code', outcome: 'success', userId: existingUser.id, subject: email });
   res.json({
     message: 'Password reset code sent',
     ...result,
@@ -165,6 +173,7 @@ export const resetPassword = asyncHandler(async (req: AuthRequest, res) => {
 
   const token = signUserToken(existingUser.id);
   setAuthCookie(res, token);
+  recordAuditEvent({ event: 'auth.password_reset', outcome: 'success', userId: existingUser.id, subject: email });
 
   res.json({
     token,

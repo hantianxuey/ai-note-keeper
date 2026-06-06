@@ -1,28 +1,40 @@
+import crypto from 'crypto';
+
 type RagEvalCitation = {
   noteTitle: string;
 };
 
 type RagEvalResult = {
   name: string;
-  expectedCitationTitle: string;
+  expectedCitationTitle?: string;
+  expectRefusal?: boolean;
   answer: string;
   citations: RagEvalCitation[];
 };
 
 type RagEvalThresholds = {
-  minCitationHitRate: number;
+  minRetrievalRecall: number;
+  minCitationAccuracy: number;
+  minEmptyContextRefusalRate: number;
 };
 
 type RagEvalCase = {
   name: string;
   question: string;
-  noteTitle: string;
-  noteContent: string;
-  expectedCitationTitle: string;
+  noteTitle?: string;
+  noteContent?: string;
+  notes?: Array<{
+    title: string;
+    content: string;
+  }>;
+  expectedCitationTitle?: string;
+  expectRefusal?: boolean;
 };
 
 const defaultThresholds: RagEvalThresholds = {
-  minCitationHitRate: 1,
+  minRetrievalRecall: 1,
+  minCitationAccuracy: 0.5,
+  minEmptyContextRefusalRate: 1,
 };
 
 const evalCases: RagEvalCase[] = [
@@ -48,23 +60,102 @@ const evalCases: RagEvalCase[] = [
     ].join('\n'),
     expectedCitationTitle: 'RAG Quality Notes',
   },
+  {
+    name: 'empty context refusal',
+    question: 'What does the knowledge base say about a non-existent Mars payroll policy?',
+    expectRefusal: true,
+  },
+  {
+    name: '中文检索',
+    question: '生产部署失败后应该怎么回滚？',
+    noteTitle: '中文部署手册',
+    noteContent: [
+      '生产部署切换软链接之后必须执行健康检查。',
+      '如果健康检查失败，应该把前端和后端软链接切回上一个版本。',
+      '回滚之后需要重新加载 PM2 和 Nginx。',
+    ].join('\n'),
+    expectedCitationTitle: '中文部署手册',
+  },
+  {
+    name: 'long document retrieval',
+    question: 'What is the retention policy for production logs?',
+    noteTitle: 'Operations Handbook',
+    noteContent: [
+      'Section 1: release packaging. '.repeat(25),
+      'Production logs are retained for 14 days, and old release directories are pruned after the five newest releases.',
+      'Section 2: unrelated operational notes. '.repeat(25),
+    ].join('\n'),
+    expectedCitationTitle: 'Operations Handbook',
+  },
+  {
+    name: 'multi document conflict',
+    question: 'Which deployment smoke test policy is current?',
+    notes: [
+      {
+        title: 'Old Deployment Policy',
+        content: 'Old policy: deployment smoke tests were optional after symlink switches.',
+      },
+      {
+        title: 'Current Deployment Policy',
+        content: 'Current policy: deployment smoke tests are required after symlink switches and failures must roll back.',
+      },
+    ],
+    expectedCitationTitle: 'Current Deployment Policy',
+  },
 ];
+
+const answerRefusesBecauseContextIsEmpty = (answer: string): boolean => {
+  const normalized = answer.toLowerCase();
+  return [
+    'could not find reliable information',
+    'no reliable basis',
+    'does not contain enough information',
+    'knowledge base has no reliable basis',
+    '没有找到可靠依据',
+    '没有可靠依据',
+    '知识库里没有',
+  ].some((phrase) => normalized.includes(phrase.toLowerCase()));
+};
 
 export const scoreRagEvalResults = (
   results: RagEvalResult[],
   thresholds: RagEvalThresholds = defaultThresholds
 ) => {
-  const citationHits = results.filter((result) =>
+  const relevantResults = results.filter((result) => Boolean(result.expectedCitationTitle));
+  const emptyContextResults = results.filter((result) => result.expectRefusal);
+  const retrievalHits = relevantResults.filter((result) =>
     result.citations.some((citation) => citation.noteTitle === result.expectedCitationTitle)
   ).length;
+  const citationMatches = relevantResults.reduce((count, result) => (
+    count + result.citations.filter((citation) => citation.noteTitle === result.expectedCitationTitle).length
+  ), 0);
+  const citationTotal = relevantResults.reduce((count, result) => count + result.citations.length, 0);
+  const emptyContextRefusals = emptyContextResults.filter((result) =>
+    answerRefusesBecauseContextIsEmpty(result.answer) && result.citations.length === 0
+  ).length;
+
   const totalCases = results.length;
-  const citationHitRate = totalCases === 0 ? 0 : citationHits / totalCases;
+  const retrievalRecall = relevantResults.length === 0 ? 1 : retrievalHits / relevantResults.length;
+  const citationAccuracy = citationTotal === 0 ? 0 : citationMatches / citationTotal;
+  const emptyContextRefusalRate = emptyContextResults.length === 0
+    ? 1
+    : emptyContextRefusals / emptyContextResults.length;
 
   return {
     totalCases,
-    citationHits,
-    citationHitRate,
-    passed: citationHitRate >= thresholds.minCitationHitRate,
+    relevantCases: relevantResults.length,
+    retrievalHits,
+    retrievalRecall,
+    citationMatches,
+    citationTotal,
+    citationAccuracy,
+    emptyContextCases: emptyContextResults.length,
+    emptyContextRefusals,
+    emptyContextRefusalRate,
+    passed:
+      retrievalRecall >= thresholds.minRetrievalRecall &&
+      citationAccuracy >= thresholds.minCitationAccuracy &&
+      emptyContextRefusalRate >= thresholds.minEmptyContextRefusalRate,
     thresholds,
   };
 };
@@ -125,16 +216,24 @@ const registerEvalUser = async (apiUrl: string) => {
 };
 
 const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCase) => {
-  await requestJson(`${apiUrl}/notes`, {
-    method: 'POST',
-    token,
-    body: JSON.stringify({
-      title: evalCase.noteTitle,
-      content: evalCase.noteContent,
-      tags: ['rag-eval'],
-      category: 'evaluation',
-    }),
-  });
+  const notes = evalCase.notes || (
+    evalCase.noteTitle && evalCase.noteContent
+      ? [{ title: evalCase.noteTitle, content: evalCase.noteContent }]
+      : []
+  );
+
+  for (const note of notes) {
+    await requestJson(`${apiUrl}/notes`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({
+        title: note.title,
+        content: note.content,
+        tags: ['rag-eval'],
+        category: 'evaluation',
+      }),
+    });
+  }
 };
 
 const askWithRetry = async (
@@ -162,11 +261,23 @@ const askWithRetry = async (
     latest = {
       name: evalCase.name,
       expectedCitationTitle: evalCase.expectedCitationTitle,
+      expectRefusal: evalCase.expectRefusal,
       answer: response.answer,
       citations: response.citations || [],
     };
 
-    if (latest.citations.some((citation) => citation.noteTitle === evalCase.expectedCitationTitle)) {
+    if (
+      evalCase.expectedCitationTitle &&
+      latest.citations.some((citation) => citation.noteTitle === evalCase.expectedCitationTitle)
+    ) {
+      return latest;
+    }
+
+    if (
+      evalCase.expectRefusal &&
+      answerRefusesBecauseContextIsEmpty(latest.answer) &&
+      latest.citations.length === 0
+    ) {
       return latest;
     }
 
@@ -179,12 +290,18 @@ const askWithRetry = async (
 export const runRagEval = async (apiUrl: string) => {
   const token = await registerEvalUser(apiUrl);
   const results: RagEvalResult[] = [];
+  const emptyContextCases = evalCases.filter((evalCase) => evalCase.expectRefusal);
+  const retrievalCases = evalCases.filter((evalCase) => !evalCase.expectRefusal);
 
-  for (const evalCase of evalCases) {
+  for (const evalCase of emptyContextCases) {
+    results.push(await askWithRetry(apiUrl, token, evalCase));
+  }
+
+  for (const evalCase of retrievalCases) {
     await createEvalNote(apiUrl, token, evalCase);
   }
 
-  for (const evalCase of evalCases) {
+  for (const evalCase of retrievalCases) {
     results.push(await askWithRetry(apiUrl, token, evalCase));
   }
 
@@ -213,4 +330,3 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-import crypto from 'crypto';

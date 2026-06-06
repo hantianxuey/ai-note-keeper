@@ -5,6 +5,7 @@ import { EMBEDDING_PROVIDERS } from '../types/llm';
 import { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
+import { recordAuditEvent } from '../services/auditService';
 import { requireUserId } from './controllerUtils';
 
 export const getEmbeddingProviders = async (
@@ -43,7 +44,7 @@ export const getEmbeddingProviders = async (
 };
 
 export const getEmbeddingModels = (
-  req: AuthRequest,
+  _req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -58,7 +59,7 @@ export const getEmbeddingModels = (
 export const testEmbeddingConnection = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   try {
     const { provider, model } = req.body;
@@ -92,6 +93,12 @@ export const saveEmbeddingApiKey = async (
 
     await EmbeddingConfigModel.upsert(userId, provider, apiKey);
     embeddingService.removeUserProvider(userId, provider);
+    recordAuditEvent({
+      event: 'provider_key.embedding.save',
+      outcome: 'success',
+      userId,
+      metadata: { provider },
+    });
 
     res.json({
       success: true,
@@ -117,6 +124,12 @@ export const deleteEmbeddingApiKey = async (
 
     await EmbeddingConfigModel.delete(userId, provider);
     embeddingService.removeUserProvider(userId, provider);
+    recordAuditEvent({
+      event: 'provider_key.embedding.delete',
+      outcome: 'success',
+      userId,
+      metadata: { provider },
+    });
 
     res.json({
       success: true,

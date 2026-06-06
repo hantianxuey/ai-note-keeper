@@ -9,14 +9,20 @@ import {
   sendVerificationCode,
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import {
+  authPasswordRequestSchema,
+  resetPasswordRequestSchema,
+  verificationCodeRequestSchema,
+} from '../schemas/apiSchemas';
 
 const router = express.Router();
 
-router.post('/verification-code', sendVerificationCode);
-router.post('/password-reset-code', sendPasswordResetCode);
-router.post('/reset-password', resetPassword);
-router.post('/register', register);
-router.post('/login', login);
+router.post('/verification-code', validateBody(verificationCodeRequestSchema), sendVerificationCode);
+router.post('/password-reset-code', validateBody(verificationCodeRequestSchema), sendPasswordResetCode);
+router.post('/reset-password', validateBody(resetPasswordRequestSchema), resetPassword);
+router.post('/register', validateBody(resetPasswordRequestSchema), register);
+router.post('/login', validateBody(authPasswordRequestSchema), login);
 router.post('/logout', logout);
 router.get('/me', authenticate, me);
 

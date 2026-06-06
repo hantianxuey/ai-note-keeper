@@ -1,4 +1,4 @@
-import { Counter, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
 
 export const metricsRegistry = new Registry();
 
@@ -19,6 +19,35 @@ export const httpRequestDurationSeconds = new Histogram({
   help: 'HTTP request duration in seconds by method, route, and status code.',
   labelNames: ['method', 'route', 'status_code'] as const,
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+  registers: [metricsRegistry],
+});
+
+export const ragRetrievalDurationSeconds = new Histogram({
+  name: 'ai_note_keeper_rag_retrieval_duration_seconds',
+  help: 'RAG retrieval duration in seconds by provider and final status.',
+  labelNames: ['provider', 'status'] as const,
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+  registers: [metricsRegistry],
+});
+
+export const ragRetrievalResultsTotal = new Counter({
+  name: 'ai_note_keeper_rag_retrieval_results_total',
+  help: 'RAG retrieval result count by source and provider.',
+  labelNames: ['provider', 'source'] as const,
+  registers: [metricsRegistry],
+});
+
+export const ragRetrievalTopScore = new Gauge({
+  name: 'ai_note_keeper_rag_retrieval_top_score',
+  help: 'Most recent top retrieval score by source and provider.',
+  labelNames: ['provider', 'source'] as const,
+  registers: [metricsRegistry],
+});
+
+export const securityEventsTotal = new Counter({
+  name: 'ai_note_keeper_security_events_total',
+  help: 'Security and audit events by event name and outcome.',
+  labelNames: ['event', 'outcome'] as const,
   registers: [metricsRegistry],
 });
 
@@ -46,4 +75,35 @@ export const recordHttpRequest = (
 
   httpRequestsTotal.inc(labels);
   httpRequestDurationSeconds.observe(labels, durationSeconds);
+};
+
+export type RagRetrievalSource = 'vector' | 'fulltext' | 'ilike' | 'keyword' | 'none';
+
+export const recordRagRetrieval = (
+  provider: string,
+  status: 'ok' | 'empty' | 'error',
+  durationSeconds: number,
+  sourceCounts: Partial<Record<RagRetrievalSource, number>>,
+  topScores: Partial<Record<RagRetrievalSource, number>>
+) => {
+  ragRetrievalDurationSeconds.observe({ provider, status }, durationSeconds);
+
+  for (const [source, count] of Object.entries(sourceCounts)) {
+    if (count > 0) {
+      ragRetrievalResultsTotal.inc({ provider, source }, count);
+    }
+  }
+
+  for (const [source, score] of Object.entries(topScores)) {
+    if (score !== undefined && Number.isFinite(score)) {
+      ragRetrievalTopScore.set({ provider, source }, score);
+    }
+  }
+};
+
+export const recordSecurityEvent = (
+  event: string,
+  outcome: 'success' | 'failure'
+) => {
+  securityEventsTotal.inc({ event, outcome });
 };

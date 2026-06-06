@@ -2,6 +2,7 @@ require('dotenv').config();
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler';
+import { recordAuditEvent } from '../services/auditService';
 
 export interface AuthRequest extends Request {
   userId?: number;
@@ -16,7 +17,7 @@ if (!JWT_SECRET) {
 
 export const authenticate = (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
@@ -27,6 +28,7 @@ export const authenticate = (
     ?.slice('auth_token='.length);
 
   if ((!authHeader || !authHeader.startsWith('Bearer ')) && !authCookie) {
+    recordAuditEvent({ event: 'auth.authenticate', outcome: 'failure', metadata: { reason: 'missing_token' } });
     return next(new AppError('Unauthorized: No token provided', 401));
   }
 
@@ -39,6 +41,7 @@ export const authenticate = (
     req.userId = decoded.userId;
     next();
   } catch (error) {
+    recordAuditEvent({ event: 'auth.authenticate', outcome: 'failure', metadata: { reason: 'invalid_token' } });
     return next(new AppError('Unauthorized: Invalid token', 401));
   }
 };

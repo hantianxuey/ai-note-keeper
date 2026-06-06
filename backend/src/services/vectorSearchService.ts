@@ -1,6 +1,8 @@
 import pool from '../config/database';
-import { embeddingService } from './embeddingService';
+import { logger } from '../config/logger';
+import { RagRetrievalSource, recordRagRetrieval } from '../observability/metrics';
 import { Citation, RetrievalMetadata } from '../types';
+import { embeddingService } from './embeddingService';
 
 const CHUNK_SIZE = 500;
 const CHUNK_OVERLAP = 50;
@@ -11,6 +13,19 @@ const MIN_VECTOR_DISTANCE_FOR_TRUST = 1.0;
 const MAX_SNIPPET_LENGTH = 2000;
 const MAX_CONTEXT_TOTAL_LENGTH = 8000;
 const MAX_FALLBACK_RESULTS = 3;
+
+type SearchSource = Exclude<RagRetrievalSource, 'none'>;
+
+type SearchRow = {
+  note_id: number;
+  title: string;
+  snippet: string;
+  rank: number;
+  source: SearchSource;
+};
+
+const snippetFor = (content: string): string =>
+  content.substring(0, MAX_SNIPPET_LENGTH) + (content.length > MAX_SNIPPET_LENGTH ? '...' : '');
 
 function splitIntoChunks(text: string, chunkSize: number = CHUNK_SIZE, overlap: number = CHUNK_OVERLAP): string[] {
   if (!text || text.trim().length === 0) return [];
@@ -44,27 +59,21 @@ function extractKeywords(text: string): string[] {
   const chineseStopWords = new Set([
     '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
     '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
-    '看', '好', '自己', '这', '那', '有', '还', '什么', '吗', '呢', '吧',
-    '讲了', '笔记', '测试', '讲', '吗', '呢', '吧', '啊',
+    '看', '好', '自己', '这', '那', '还', '什么', '吗', '呢', '吧',
+    '讲了', '笔记', '测试', '讲', '啊',
   ]);
 
   const processed = text
     .toLowerCase()
     .replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, ' ');
 
-  const englishWords = processed
-    .match(/[a-zA-Z0-9]+/g) || [];
-
+  const englishWords = processed.match(/[a-zA-Z0-9]+/g) || [];
   const chineseWords: string[] = [];
   const chineseChars = processed.match(/[\u4e00-\u9fff]+/g) || [];
   for (const str of chineseChars) {
     for (let i = 0; i < str.length; i++) {
-      if (i + 2 <= str.length) {
-        chineseWords.push(str.slice(i, i + 3));
-      }
-      if (i + 1 <= str.length) {
-        chineseWords.push(str.slice(i, i + 2));
-      }
+      if (i + 2 <= str.length) chineseWords.push(str.slice(i, i + 3));
+      if (i + 1 <= str.length) chineseWords.push(str.slice(i, i + 2));
       chineseWords.push(str.slice(i, i + 1));
     }
   }
@@ -109,7 +118,7 @@ class VectorSearchService {
       this.isChunkTableReady = true;
       return true;
     } catch (error) {
-      console.error('Failed to create note_chunks table:', error);
+      logger.error({ err: error }, 'Failed to create note_chunks table');
       return false;
     }
   }
@@ -144,10 +153,10 @@ class VectorSearchService {
       }
 
       embeddingService.indexNote(noteId, userId, title, plainContent, effectiveProvider).catch((error) => {
-        console.warn(`Vector indexing failed for note ${noteId}:`, error);
+        logger.warn({ err: error, noteId, userId, provider: effectiveProvider }, 'Vector indexing failed');
       });
     } catch (error) {
-      console.error(`Failed to index note ${noteId}:`, error);
+      logger.error({ err: error, noteId, userId }, 'Failed to index note chunks');
     }
   }
 
@@ -155,79 +164,102 @@ class VectorSearchService {
     try {
       await pool.query('DELETE FROM note_chunks WHERE note_id = $1', [noteId]);
       embeddingService.removeNote(noteId, userId).catch((error) => {
-        console.warn(`Vector remove failed for note ${noteId}:`, error);
+        logger.warn({ err: error, noteId, userId }, 'Vector index removal failed');
       });
     } catch (error) {
-      console.error(`Failed to remove note index ${noteId}:`, error);
+      logger.error({ err: error, noteId, userId }, 'Failed to remove note index');
     }
   }
 
   async search(userId: number, query: string, limit: number = 5, provider?: string): Promise<Citation[]> {
+    const startedAt = process.hrtime.bigint();
+    let effectiveProvider = provider || 'unknown';
+    const sourceCounts: Partial<Record<RagRetrievalSource, number>> = {};
+    const topScores: Partial<Record<RagRetrievalSource, number>> = {};
+
+    const finish = (status: 'ok' | 'empty' | 'error') => {
+      const durationSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+      recordRagRetrieval(effectiveProvider, status, durationSeconds, sourceCounts, topScores);
+      logger.info({
+        userId,
+        provider: effectiveProvider,
+        status,
+        durationSeconds,
+        resultSources: sourceCounts,
+        topScores,
+      }, 'RAG retrieval completed');
+    };
+
+    const recordLayer = (source: SearchSource, rows: SearchRow[]) => {
+      sourceCounts[source] = (sourceCounts[source] || 0) + rows.length;
+      const bestScore = rows.reduce<number | undefined>((best, row) => (
+        best === undefined || row.rank > best ? row.rank : best
+      ), undefined);
+      if (bestScore !== undefined) {
+        topScores[source] = bestScore;
+      }
+    };
+
     try {
-      console.log('🔍 Search called:', { userId, query, limit, provider });
+      logger.info({ userId, limit, provider }, 'RAG retrieval started');
       const ready = await this.ensureChunkTable();
       if (!ready) {
-        console.log('⚠️ Chunk table not ready, returning no citations');
+        sourceCounts.none = 0;
+        finish('empty');
         return [];
       }
 
-      const effectiveProvider = provider || await this.getDefaultProvider(userId);
-      console.log(`📌 Using embedding provider: ${effectiveProvider}`);
-      let results: Array<{ note_id: number; title: string; snippet: string; rank: number; source: string }> = [];
+      effectiveProvider = provider || await this.getDefaultProvider(userId);
+      let results: SearchRow[] = [];
       let fallbackCount = 0;
       let vectorTrustworthy = false;
 
-      // ============ Layer 0: Vector Search (Highest Priority) ============
-      console.log('🧠 Attempting vector search...');
       try {
         const vectorResults = await embeddingService.search(query, limit, effectiveProvider, userId);
-        console.log(`📊 Vector search returned ${vectorResults.length} results`);
 
         if (vectorResults.length > 0) {
-        // Sort by distance (ascending = most relevant first)
-        vectorResults.sort((a, b) => a.distance - b.distance);
-        
-        // Use relative threshold: only keep results within 15% of the best result's distance
-        const bestDistance = vectorResults[0].distance;
-        const maxAllowedDistance = Math.min(
-          MAX_VECTOR_DISTANCE_ABSOLUTE,
-          bestDistance * MAX_VECTOR_DISTANCE_RATIO
-        );
-        
-        const filteredResults = vectorResults.filter((r) => r.distance <= maxAllowedDistance);
-        
-        console.log(`📊 Vector search: ${vectorResults.length} results, ${filteredResults.length} after threshold (best=${bestDistance.toFixed(4)}, max=${maxAllowedDistance.toFixed(4)})`);
-        
-        if (filteredResults.length > 0 && bestDistance < MIN_VECTOR_DISTANCE_FOR_TRUST) {
-          vectorTrustworthy = true;
-        }
-        
-        for (const r of vectorResults) {
-          const included = r.distance <= maxAllowedDistance ? '✓' : '✗';
-          console.log(`   ${included} [${r.title}] distance=${r.distance.toFixed(4)}`);
-        }
+          vectorResults.sort((a, b) => a.distance - b.distance);
 
-        results = filteredResults.map((r) => ({
-          note_id: r.noteId,
-          title: r.title,
-          snippet: r.content.substring(0, MAX_SNIPPET_LENGTH) + (r.content.length > MAX_SNIPPET_LENGTH ? '...' : ''),
-          rank: 1 - r.distance / (bestDistance || 1),
-          source: 'vector',
-        }));
+          const bestDistance = vectorResults[0].distance;
+          const maxAllowedDistance = Math.min(
+            MAX_VECTOR_DISTANCE_ABSOLUTE,
+            bestDistance * MAX_VECTOR_DISTANCE_RATIO
+          );
+          const filteredResults = vectorResults.filter((r) => r.distance <= maxAllowedDistance);
 
+          if (filteredResults.length > 0 && bestDistance < MIN_VECTOR_DISTANCE_FOR_TRUST) {
+            vectorTrustworthy = true;
+          }
+
+          const vectorRows = filteredResults.map((r) => ({
+            note_id: r.noteId,
+            title: r.title,
+            snippet: snippetFor(r.content),
+            rank: 1 / (1 + Math.max(r.distance, 0)),
+            source: 'vector' as const,
+          }));
+
+          recordLayer('vector', vectorRows);
+          logger.info({
+            userId,
+            provider: effectiveProvider,
+            returned: vectorResults.length,
+            included: vectorRows.length,
+            bestDistance,
+            maxAllowedDistance,
+          }, 'Vector retrieval layer completed');
+          results = vectorRows;
         }
       } catch (error) {
-        console.warn('⚠️ Vector search failed, falling back to keyword search:', error);
+        logger.warn({ err: error, userId, provider: effectiveProvider }, 'Vector retrieval failed; falling back to keyword search');
       }
 
-      // ============ Layer 1: PostgreSQL Full-Text Search (Fallback) ============
       if (results.length < limit && !vectorTrustworthy) {
         const queryKeywords = extractKeywords(query);
         const tsTerms = queryKeywords.filter((w) => w.length > 2);
 
         if (tsTerms.length > 0) {
           const tsQuery = tsTerms.map((w) => w + ':*').join(' | ');
-          console.log('🔎 Full-text search with query:', tsQuery);
           const fullTextResult = await pool.query(
             `SELECT n.id as note_id, n.title,
                     nc.content as snippet,
@@ -240,30 +272,32 @@ class VectorSearchService {
              LIMIT $3`,
             [tsQuery, userId, limit]
           );
-          console.log('📄 Full-text results:', fullTextResult.rows.length);
 
           const existingIds = new Set(results.map((r) => r.note_id));
+          const rows: SearchRow[] = [];
           for (const row of fullTextResult.rows) {
             if (!existingIds.has(row.note_id) && results.length < limit && fallbackCount < MAX_FALLBACK_RESULTS) {
-              results.push({
-                ...row,
-                snippet: row.snippet.substring(0, MAX_SNIPPET_LENGTH) + (row.snippet.length > MAX_SNIPPET_LENGTH ? '...' : ''),
-                rank: row.rank * 0.5,
-                source: 'fulltext',
-              });
+              const result = {
+                note_id: row.note_id,
+                title: row.title,
+                snippet: snippetFor(row.snippet),
+                rank: Number(row.rank) * 0.5,
+                source: 'fulltext' as const,
+              };
+              results.push(result);
+              rows.push(result);
               existingIds.add(row.note_id);
               fallbackCount++;
             }
           }
+          recordLayer('fulltext', rows);
+          logger.info({ userId, provider: effectiveProvider, returned: fullTextResult.rows.length, included: rows.length }, 'Full-text retrieval layer completed');
         }
 
-        // ============ Layer 2: ILIKE Fuzzy Match ============
         if (results.length < limit && queryKeywords.length > 0 && !vectorTrustworthy) {
           const existingIds = new Set(results.map((r) => r.note_id));
           const ilikeConditions = queryKeywords.map((_, i) => `nc.content ILIKE $${i + 3}`).join(' OR ');
           const ilikeParams = queryKeywords.map((w) => `%${w}%`);
-
-          console.log('🔍 ILIKE search with:', queryKeywords);
           const ilikeResult = await pool.query(
             `SELECT n.id as note_id, n.title,
                     nc.content as snippet,
@@ -275,28 +309,30 @@ class VectorSearchService {
              LIMIT $2`,
             [userId, limit - results.length, ...ilikeParams]
           );
-          console.log('📄 ILIKE results:', ilikeResult.rows.length);
 
+          const rows: SearchRow[] = [];
           for (const row of ilikeResult.rows) {
             if (!existingIds.has(row.note_id) && results.length < limit && fallbackCount < MAX_FALLBACK_RESULTS) {
-              results.push({
-                ...row,
-                snippet: row.snippet.substring(0, MAX_SNIPPET_LENGTH) + (row.snippet.length > MAX_SNIPPET_LENGTH ? '...' : ''),
-                rank: row.rank * 0.3,
-                source: 'ilike',
-              });
+              const result = {
+                note_id: row.note_id,
+                title: row.title,
+                snippet: snippetFor(row.snippet),
+                rank: Number(row.rank) * 0.3,
+                source: 'ilike' as const,
+              };
+              results.push(result);
+              rows.push(result);
               existingIds.add(row.note_id);
               fallbackCount++;
             }
           }
+          recordLayer('ilike', rows);
+          logger.info({ userId, provider: effectiveProvider, returned: ilikeResult.rows.length, included: rows.length }, 'ILike retrieval layer completed');
         }
 
-        // ============ Layer 3: Keyword Array Match ============
         if (results.length < limit && queryKeywords.length > 0 && !vectorTrustworthy) {
           const existingIds = new Set(results.map((r) => r.note_id));
           const keywordPlaceholders = queryKeywords.map((_, i) => `$${i + 3}`).join(',');
-
-          console.log('🔍 Keywords array search with:', queryKeywords);
           const keywordResult = await pool.query(
             `SELECT DISTINCT n.id as note_id, n.title,
                     nc.content as snippet,
@@ -308,31 +344,36 @@ class VectorSearchService {
              LIMIT $2`,
             [userId, limit - results.length, ...queryKeywords]
           );
-          console.log('📄 Keyword array results:', keywordResult.rows.length);
 
+          const rows: SearchRow[] = [];
           for (const row of keywordResult.rows) {
             if (!existingIds.has(row.note_id) && results.length < limit && fallbackCount < MAX_FALLBACK_RESULTS) {
-              results.push({
-                ...row,
-                snippet: row.snippet.substring(0, MAX_SNIPPET_LENGTH) + (row.snippet.length > MAX_SNIPPET_LENGTH ? '...' : ''),
-                rank: row.rank * 0.2,
-                source: 'keyword',
-              });
+              const result = {
+                note_id: row.note_id,
+                title: row.title,
+                snippet: snippetFor(row.snippet),
+                rank: Number(row.rank) * 0.2,
+                source: 'keyword' as const,
+              };
+              results.push(result);
+              rows.push(result);
               existingIds.add(row.note_id);
               fallbackCount++;
             }
           }
+          recordLayer('keyword', rows);
+          logger.info({ userId, provider: effectiveProvider, returned: keywordResult.rows.length, included: rows.length }, 'Keyword retrieval layer completed');
         }
       }
 
       if (results.length === 0) {
-        console.log('⚠️ No results found');
+        sourceCounts.none = 0;
+        finish('empty');
         return [];
       }
 
-      console.log('✅ Search completed with', results.length, 'results, sources:', results.map((r) => r.source).join(', '));
       const seen = new Set<number>();
-      return results
+      const citations = results
         .filter((r) => {
           if (seen.has(r.note_id)) return false;
           seen.add(r.note_id);
@@ -343,19 +384,23 @@ class VectorSearchService {
           noteTitle: r.title,
           snippet: r.snippet,
           sourceIndex: index + 1,
-          searchSource: r.source as Citation['searchSource'],
+          searchSource: r.source,
           rank: r.rank,
           score: r.rank,
         }));
+
+      finish('ok');
+      return citations;
     } catch (error) {
-      console.error('❌ Search failed:', error);
+      finish('error');
+      logger.error({ err: error, userId, provider: effectiveProvider }, 'RAG retrieval failed');
       return [];
     }
   }
 
   async getContextForQuestion(userId: number, question: string, maxChunks: number = 5, provider?: string): Promise<{ context: string[]; citations: Citation[]; retrieval: RetrievalMetadata }> {
     const citations = await this.search(userId, question, maxChunks, provider);
-    
+
     let totalLength = 0;
     const context: string[] = [];
     for (let i = 0; i < citations.length; i++) {
@@ -372,7 +417,7 @@ class VectorSearchService {
       context.push(entry);
       totalLength += entry.length;
     }
-    
+
     const trimmedCitations = citations.slice(0, context.length).map((citation, index) => ({
       ...citation,
       sourceIndex: index + 1,
@@ -394,7 +439,7 @@ class VectorSearchService {
       if (!ready) return 0;
 
       const defaultProvider = 'demo';
-      console.log(`🔄 Reindexing all notes with provider: ${defaultProvider}`);
+      logger.info({ provider: defaultProvider }, 'Reindexing all notes');
 
       const result = await pool.query('SELECT id, user_id, title, content FROM notes');
       let count = 0;
@@ -402,10 +447,10 @@ class VectorSearchService {
         await this.indexNote(note.id, note.user_id, note.title, note.content, defaultProvider);
         count++;
       }
-      console.log(`Reindexed ${count} notes with ${defaultProvider}`);
+      logger.info({ count, provider: defaultProvider }, 'Reindexed notes');
       return count;
     } catch (error) {
-      console.error('Reindex failed:', error);
+      logger.error({ err: error }, 'Reindex failed');
       return 0;
     }
   }

@@ -11,6 +11,7 @@ import { getAuthRateLimitConfig, getRequestBodyLimit } from './config/security';
 import { logger } from './config/logger';
 import { metricsMiddleware, requestLogger } from './middleware/observability';
 import { metricsRegistry } from './observability/metrics';
+import { openApiSpec, swaggerHtml } from './docs/openapi';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,15 +52,15 @@ const authRateLimiter = rateLimit({
   },
 });
 
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', message: 'AI Note Keeper API is running' });
 });
 
-app.get('/health/live', (req, res) => {
+app.get('/health/live', (_req, res) => {
   res.json({ status: 'ok', message: 'AI Note Keeper API is running' });
 });
 
-app.get('/health/ready', async (req, res, next) => {
+app.get('/health/ready', async (_req, res, next) => {
   try {
     const snapshot = await createReadinessSnapshot();
     res.status(snapshot.httpStatus).json(snapshot.body);
@@ -75,6 +76,14 @@ app.get('/metrics', async (_req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get('/api/docs/openapi.json', (_req, res) => {
+  res.json(openApiSpec);
+});
+
+app.get('/api/docs', (_req, res) => {
+  res.type('html').send(swaggerHtml);
 });
 
 import authRoutes from './routes/auth';
