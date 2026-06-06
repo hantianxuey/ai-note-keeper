@@ -178,7 +178,12 @@ const requestJson = async <T>(
     throw new Error(`${options.method || 'GET'} ${url} failed: ${response.status} ${body}`);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const responseBody = await response.text();
+  return (responseBody ? JSON.parse(responseBody) : undefined) as T;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -215,15 +220,16 @@ const registerEvalUser = async (apiUrl: string) => {
   return response.token;
 };
 
-const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCase) => {
+const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCase): Promise<number[]> => {
   const notes = evalCase.notes || (
     evalCase.noteTitle && evalCase.noteContent
       ? [{ title: evalCase.noteTitle, content: evalCase.noteContent }]
       : []
   );
+  const noteIds: number[] = [];
 
   for (const note of notes) {
-    await requestJson(`${apiUrl}/notes`, {
+    const response = await requestJson<{ note: { id: number } }>(`${apiUrl}/notes`, {
       method: 'POST',
       token,
       body: JSON.stringify({
@@ -232,6 +238,18 @@ const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCa
         tags: ['rag-eval'],
         category: 'evaluation',
       }),
+    });
+    noteIds.push(response.note.id);
+  }
+
+  return noteIds;
+};
+
+const deleteEvalNotes = async (apiUrl: string, token: string, noteIds: number[]) => {
+  for (const noteId of noteIds) {
+    await requestJson(`${apiUrl}/notes/${noteId}`, {
+      method: 'DELETE',
+      token,
     });
   }
 };
@@ -288,12 +306,17 @@ const askWithRetry = async (
 };
 
 export const runRagEval = async (apiUrl: string) => {
+  const token = await registerEvalUser(apiUrl);
   const results: RagEvalResult[] = [];
 
   for (const evalCase of evalCases) {
-    const token = await registerEvalUser(apiUrl);
-    await createEvalNote(apiUrl, token, evalCase);
-    results.push(await askWithRetry(apiUrl, token, evalCase));
+    const noteIds = await createEvalNote(apiUrl, token, evalCase);
+    try {
+      results.push(await askWithRetry(apiUrl, token, evalCase));
+    } finally {
+      await deleteEvalNotes(apiUrl, token, noteIds);
+      await wait(750);
+    }
   }
 
   const summary = scoreRagEvalResults(results);
