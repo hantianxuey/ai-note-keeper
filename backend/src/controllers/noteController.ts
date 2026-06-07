@@ -3,7 +3,7 @@ import { AttachmentModel } from '../models/Attachment';
 import { vectorSearchService } from '../services/vectorSearchService';
 import { resolveImagePath } from '../services/imageUploadService';
 import { AppError } from '../middleware/errorHandler';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import fs from 'fs/promises';
 import {
   asyncHandler,

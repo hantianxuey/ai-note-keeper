@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { embeddingService } from '../services/embeddingService';
 import { EmbeddingConfigModel } from '../models/EmbeddingConfig';
 import { EMBEDDING_PROVIDERS } from '../types/llm';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
 import { recordAuditEvent } from '../services/auditService';

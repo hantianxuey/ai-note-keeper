@@ -3,7 +3,7 @@ import { llmService } from '../services/llmService';
 import { vectorSearchService } from '../services/vectorSearchService';
 import { embeddingService } from '../services/embeddingService';
 import { ConversationModel } from '../models/Conversation';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 
 export const askQuestion = async (

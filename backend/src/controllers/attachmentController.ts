@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import { AttachmentModel } from '../models/Attachment';
 import { NoteModel } from '../models/Note';
 import { AppError } from '../middleware/errorHandler';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import {
   asyncHandler,
   parseIdParam,

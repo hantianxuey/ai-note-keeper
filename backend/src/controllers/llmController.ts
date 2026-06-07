@@ -4,7 +4,7 @@ import { llmService } from '../services/llmService';
 import { LLMConfigModel } from '../models/LLMConfig';
 import { NoteModel } from '../models/Note';
 import { LLM_PROVIDERS } from '../types/llm';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { readSensitiveField } from '../config/requestEncryption';
 import { recordAuditEvent } from '../services/auditService';

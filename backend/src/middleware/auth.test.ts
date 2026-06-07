@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 import { authenticate } from './auth';
 import { AuthSessionModel } from '../models/AuthSession';
 
+vi.hoisted(() => {
+  process.env.JWT_SECRET = 'test-secret';
+});
+
 vi.mock('jsonwebtoken', () => ({
   default: {
     verify: vi.fn(),

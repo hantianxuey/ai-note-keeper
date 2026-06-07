@@ -1,5 +1,5 @@
 import { NextFunction, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 
 type Controller = (

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
 import { AuthSession, AuthSessionModel } from '../models/AuthSession';
 import { AppError } from '../middleware/errorHandler';
-import { AuthRequest } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 import { asyncHandler, publicUser, requireFields, requireUserId } from './controllerUtils';
 import { readSensitiveField } from '../config/requestEncryption';
 import { emailVerificationService } from '../services/emailVerificationService';
