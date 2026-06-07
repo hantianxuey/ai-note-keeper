@@ -135,4 +135,16 @@ describe('auth API encryption', () => {
 
     expect(localStorage.getItem('token')).toBe('legacy-token');
   });
+
+  it('does not redirect public pages when the auth probe returns 401', async () => {
+    window.history.pushState({}, '', '/register');
+    await import('./api');
+
+    await expect(responseRejectInterceptor?.({
+      response: { status: 401 },
+      config: { url: '/auth/me' },
+    })).rejects.toBeTruthy();
+
+    expect(window.location.pathname).toBe('/register');
+  });
 });

@@ -46,8 +46,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const isAuthProbe = error.config?.url?.includes('/auth/me');
       const isAuthPage = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
-      if (!isAuthPage) {
+      if (!isAuthPage && !isAuthProbe) {
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
