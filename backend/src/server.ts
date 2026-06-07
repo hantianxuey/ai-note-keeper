@@ -12,6 +12,7 @@ import { logger } from './config/logger';
 import { metricsMiddleware, requestLogger } from './middleware/observability';
 import { metricsRegistry } from './observability/metrics';
 import { openApiSpec, swaggerHtml } from './docs/openapi';
+import { csrfProtection } from './middleware/csrf';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: requestBodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
+app.use('/api', csrfProtection);
 
 const authRateLimiter = rateLimit({
   ...authRateLimitConfig,

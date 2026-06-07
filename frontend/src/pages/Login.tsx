@@ -72,7 +72,7 @@ export default function Login() {
       const response = isResetMode
         ? await authAPI.resetPassword({ email, password, verificationCode: verificationCode.trim() })
         : await authAPI.login({ email, password });
-      setAuth(response.data.user, response.data.token);
+      setAuth(response.data.user);
       navigate('/');
     } catch (err: any) {
       const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || (isResetMode ? 'Password reset failed.' : t('loginFailed'));

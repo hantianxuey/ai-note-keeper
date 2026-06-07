@@ -88,7 +88,7 @@ export default function Register() {
 
     try {
       const response = await authAPI.register({ email, password, verificationCode: verificationCode.trim() });
-      setAuth(response.data.user, response.data.token);
+      setAuth(response.data.user);
       navigate('/');
     } catch (err: any) {
       const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || t('registrationFailed');

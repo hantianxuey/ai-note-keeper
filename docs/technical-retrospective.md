@@ -106,7 +106,7 @@ RAG eval 不只检查“接口能返回答案”，而是检查三个质量指�
 当前安全边界包括：
 
 - JWT 鉴权，接口按当前用户隔离数据。
-- httpOnly cookie 与 Bearer token 兼容。
+- 认证只依赖 httpOnly `auth_token` cookie；写请求通过 `csrf_token` + `X-CSRF-Token` 做 CSRF 防护。
 - 用户级 LLM/Embedding Key，不使用服务端全局共享 Provider Key。
 - API Key 和密码等敏感字段支持请求加密。
 - API Key 入库前加密保存。

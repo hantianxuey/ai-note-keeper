@@ -1,6 +1,8 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
+import { AuthSession, AuthSessionModel } from '../models/AuthSession';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import { asyncHandler, publicUser, requireFields, requireUserId } from './controllerUtils';
@@ -10,19 +12,47 @@ import { recordAuditEvent } from '../services/auditService';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-const signUserToken = (userId: number) => jwt.sign({ userId }, JWT_SECRET, {
+const signUserToken = (userId: number, session: AuthSession) => jwt.sign({
+  userId,
+  sessionId: session.id,
+  tokenVersion: session.token_version,
+}, JWT_SECRET, {
   expiresIn: '7d',
 });
 
+const cookieOptions = {
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: SESSION_TTL_MS,
+  path: '/',
+};
+
 const setAuthCookie = (res: any, token: string) => {
   res.cookie('auth_token', token, {
+    ...cookieOptions,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/',
   });
+};
+
+const setCsrfCookie = (res: any) => {
+  const csrfToken = crypto.randomBytes(32).toString('base64url');
+  res.cookie('csrf_token', csrfToken, {
+    ...cookieOptions,
+    httpOnly: false,
+  });
+};
+
+const createSessionToken = async (userId: number) => {
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const session = await AuthSessionModel.create(userId, expiresAt);
+  return signUserToken(userId, session);
+};
+
+const setAuthCookies = (res: any, token: string) => {
+  setAuthCookie(res, token);
+  setCsrfCookie(res);
 };
 
 const validateCredentials = (email: string, password: string) => {
@@ -59,12 +89,11 @@ export const register = asyncHandler(async (req: AuthRequest, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await UserModel.create(email, passwordHash);
 
-  const token = signUserToken(user.id);
-  setAuthCookie(res, token);
+  const token = await createSessionToken(user.id);
+  setAuthCookies(res, token);
   recordAuditEvent({ event: 'auth.register', outcome: 'success', userId: user.id, subject: email });
 
   res.status(201).json({
-    token,
     user: publicUser(user),
   });
 });
@@ -89,19 +118,22 @@ export const login = asyncHandler(async (req: AuthRequest, res) => {
     throw new AppError('Invalid email or password', 401);
   }
 
-  const token = signUserToken(user.id);
-  setAuthCookie(res, token);
+  const token = await createSessionToken(user.id);
+  setAuthCookies(res, token);
   recordAuditEvent({ event: 'auth.login', outcome: 'success', userId: user.id, subject: email });
 
   res.json({
-    token,
     user: publicUser(user),
   });
 });
 
 export const logout = asyncHandler(async (req: AuthRequest, res) => {
+  if (req.userId && req.sessionId) {
+    await AuthSessionModel.revoke(req.sessionId, req.userId);
+  }
   recordAuditEvent({ event: 'auth.logout', outcome: 'success', userId: req.userId });
   res.clearCookie('auth_token', { path: '/' });
+  res.clearCookie('csrf_token', { path: '/' });
   res.status(204).end();
 });
 
@@ -170,13 +202,13 @@ export const resetPassword = asyncHandler(async (req: AuthRequest, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await UserModel.updatePassword(existingUser.id, passwordHash);
+  await AuthSessionModel.revokeAllForUser(existingUser.id);
 
-  const token = signUserToken(existingUser.id);
-  setAuthCookie(res, token);
+  const token = await createSessionToken(existingUser.id);
+  setAuthCookies(res, token);
   recordAuditEvent({ event: 'auth.password_reset', outcome: 'success', userId: existingUser.id, subject: email });
 
   res.json({
-    token,
     user: publicUser(existingUser),
   });
 });

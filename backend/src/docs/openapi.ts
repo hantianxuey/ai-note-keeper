@@ -7,7 +7,8 @@ export const openApiSpec = {
     version: '1.10.0',
     description: [
       'API for a full-stack AI note knowledge base.',
-      'Authenticated endpoints accept either a Bearer token or the httpOnly auth_token cookie set by login/register.',
+      'Authenticated endpoints use the httpOnly auth_token cookie set by login/register.',
+      'Unsafe cookie-authenticated requests must also send X-CSRF-Token matching the csrf_token cookie.',
     ].join(' '),
   },
   servers: [
@@ -26,15 +27,19 @@ export const openApiSpec = {
   ],
   components: {
     securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
       cookieAuth: {
         type: 'apiKey',
         in: 'cookie',
         name: 'auth_token',
+      },
+    },
+    parameters: {
+      CsrfToken: {
+        name: 'X-CSRF-Token',
+        in: 'header',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Must match the csrf_token cookie for unsafe cookie-authenticated requests.',
       },
     },
     schemas: {
@@ -168,16 +173,15 @@ export const openApiSpec = {
         },
         responses: {
           '201': {
-            description: 'Registered user and token',
+            description: 'Registered user; auth_token and csrf_token cookies are set',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
-                    token: { type: 'string' },
                     user: { $ref: '#/components/schemas/User' },
                   },
-                  required: ['token', 'user'],
+                  required: ['user'],
                 },
               },
             },
@@ -199,7 +203,19 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Authenticated user and token' },
+          '200': { description: 'Authenticated user; auth_token and csrf_token cookies are set' },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Log out and revoke the current server-side session',
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
+        responses: {
+          '204': { description: 'Logged out' },
           '401': { $ref: '#/components/responses/Unauthorized' },
         },
       },
@@ -208,7 +224,7 @@ export const openApiSpec = {
       get: {
         tags: ['Auth'],
         summary: 'Get current user',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: {
           '200': {
             description: 'Current user',
@@ -230,13 +246,14 @@ export const openApiSpec = {
       get: {
         tags: ['Notes'],
         summary: 'List notes',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: { '200': { description: 'Notes for current user' } },
       },
       post: {
         tags: ['Notes'],
         summary: 'Create note',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/NoteInput' } } },
@@ -251,7 +268,7 @@ export const openApiSpec = {
       get: {
         tags: ['Notes'],
         summary: 'Search notes with PostgreSQL search',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         parameters: [{ name: 'q', in: 'query', schema: { type: 'string' } }],
         responses: { '200': { description: 'Search results' } },
       },
@@ -260,7 +277,7 @@ export const openApiSpec = {
       get: {
         tags: ['Notes'],
         summary: 'Get note',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
         responses: {
           '200': { description: 'Note' },
@@ -270,8 +287,11 @@ export const openApiSpec = {
       put: {
         tags: ['Notes'],
         summary: 'Update note',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        security: [{ cookieAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/CsrfToken' },
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/NoteInput' } } },
@@ -284,8 +304,11 @@ export const openApiSpec = {
       delete: {
         tags: ['Notes'],
         summary: 'Delete note',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        security: [{ cookieAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/CsrfToken' },
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
         responses: {
           '204': { description: 'Deleted' },
           '404': { $ref: '#/components/responses/NotFound' },
@@ -296,7 +319,8 @@ export const openApiSpec = {
       post: {
         tags: ['RAG'],
         summary: 'Ask a question over the current user note knowledge base',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
         requestBody: {
           required: true,
           content: {
@@ -331,7 +355,8 @@ export const openApiSpec = {
       post: {
         tags: ['RAG'],
         summary: 'Reindex notes for retrieval',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
         responses: { '200': { description: 'Reindex count' } },
       },
     },
@@ -339,7 +364,7 @@ export const openApiSpec = {
       get: {
         tags: ['RAG'],
         summary: 'List RAG conversations',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: { '200': { description: 'Conversations' } },
       },
     },
@@ -347,7 +372,7 @@ export const openApiSpec = {
       get: {
         tags: ['LLM'],
         summary: 'List all available LLM models',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: { '200': { description: 'Available models' } },
       },
     },
@@ -355,13 +380,14 @@ export const openApiSpec = {
       get: {
         tags: ['LLM'],
         summary: 'List masked LLM provider keys',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: { '200': { description: 'Masked provider keys' } },
       },
       post: {
         tags: ['LLM'],
         summary: 'Save LLM provider key',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ProviderKeyInput' } } },
@@ -373,13 +399,14 @@ export const openApiSpec = {
       get: {
         tags: ['Embedding'],
         summary: 'List masked embedding provider keys',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
         responses: { '200': { description: 'Masked provider keys' } },
       },
       post: {
         tags: ['Embedding'],
         summary: 'Save embedding provider key',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
+        security: [{ cookieAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/CsrfToken' }],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ProviderKeyInput' } } },
@@ -391,8 +418,11 @@ export const openApiSpec = {
       post: {
         tags: ['Attachments'],
         summary: 'Upload note image attachment',
-        security: [{ bearerAuth: [] }, { cookieAuth: [] }],
-        parameters: [{ name: 'noteId', in: 'path', required: true, schema: { type: 'integer' } }],
+        security: [{ cookieAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/CsrfToken' },
+          { name: 'noteId', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
         requestBody: {
           required: true,
           content: {

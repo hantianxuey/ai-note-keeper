@@ -25,10 +25,19 @@ const api = axios.create({
   withCredentials: true,
 });
 
+const getCookie = (name: string) => document.cookie
+  .split(';')
+  .map((part) => part.trim())
+  .find((part) => part.startsWith(`${name}=`))
+  ?.slice(name.length + 1);
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = 'Bearer ' + token;
+  const method = (config.method || 'get').toLowerCase();
+  if (['post', 'put', 'patch', 'delete'].includes(method)) {
+    const csrfToken = getCookie('csrf_token');
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+    }
   }
   return config;
 });
@@ -39,7 +48,6 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const isAuthPage = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
       if (!isAuthPage) {
-        localStorage.removeItem('token');
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
@@ -129,18 +137,18 @@ export const authAPI = {
   sendPasswordResetCode: (email: string) =>
     api.post<{ message: string; devCode?: string }>('/auth/password-reset-code', { email }),
   login: async (data: { email: string; password: string }) =>
-    api.post<{ user: User; token: string }>('/auth/login', {
+    api.post<{ user: User }>('/auth/login', {
       email: data.email,
       ...(await encryptedField('password', data.password)),
     }),
   resetPassword: async (data: { email: string; password: string; verificationCode: string }) =>
-    api.post<{ user: User; token: string }>('/auth/reset-password', {
+    api.post<{ user: User }>('/auth/reset-password', {
       email: data.email,
       verificationCode: data.verificationCode,
       ...(await encryptedField('password', data.password)),
     }),
   register: async (data: { email: string; password: string; verificationCode: string }) =>
-    api.post<{ user: User; token: string }>('/auth/register', {
+    api.post<{ user: User }>('/auth/register', {
       email: data.email,
       verificationCode: data.verificationCode,
       ...(await encryptedField('password', data.password)),

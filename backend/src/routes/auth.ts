@@ -23,7 +23,7 @@ router.post('/password-reset-code', validateBody(verificationCodeRequestSchema),
 router.post('/reset-password', validateBody(resetPasswordRequestSchema), resetPassword);
 router.post('/register', validateBody(resetPasswordRequestSchema), register);
 router.post('/login', validateBody(authPasswordRequestSchema), login);
-router.post('/logout', logout);
+router.post('/logout', authenticate, logout);
 router.get('/me', authenticate, me);
 
 export default router;

@@ -31,6 +31,10 @@ type RagEvalCase = {
   expectRefusal?: boolean;
 };
 
+type EvalSession = {
+  cookies: Map<string, string>;
+};
+
 const defaultThresholds: RagEvalThresholds = {
   minRetrievalRecall: 1,
   minCitationAccuracy: 0.5,
@@ -160,18 +164,56 @@ export const scoreRagEvalResults = (
   };
 };
 
+const cookieHeader = (session?: EvalSession) => {
+  if (!session || session.cookies.size === 0) {
+    return undefined;
+  }
+
+  return Array.from(session.cookies.entries())
+    .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+    .join('; ');
+};
+
+const rememberResponseCookies = (session: EvalSession | undefined, headers: Headers) => {
+  if (!session) {
+    return;
+  }
+
+  const getSetCookie = (headers as any).getSetCookie?.bind(headers);
+  const setCookies = getSetCookie ? getSetCookie() : [headers.get('set-cookie')].filter(Boolean);
+
+  for (const setCookie of setCookies) {
+    const [cookiePair] = setCookie.split(';');
+    const separatorIndex = cookiePair.indexOf('=');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const name = cookiePair.slice(0, separatorIndex);
+    const value = cookiePair.slice(separatorIndex + 1);
+    session.cookies.set(name, decodeURIComponent(value));
+  }
+};
+
 const requestJson = async <T>(
   url: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { session?: EvalSession } = {}
 ): Promise<T> => {
+  const method = options.method || 'GET';
+  const cookies = cookieHeader(options.session);
+  const csrfToken = options.session?.cookies.get('csrf_token');
   const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      ...(cookies ? { Cookie: cookies } : {}),
+      ...(csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
+        ? { 'X-CSRF-Token': csrfToken }
+        : {}),
       ...options.headers,
     },
   });
+  rememberResponseCookies(options.session, response.headers);
 
   if (!response.ok) {
     const body = await response.text();
@@ -189,6 +231,7 @@ const requestJson = async <T>(
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const registerEvalUser = async (apiUrl: string) => {
+  const session: EvalSession = { cookies: new Map() };
   const email = `rag-eval-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   const publicKeyResponse = await requestJson<{ publicKey: string }>(`${apiUrl}/security/public-key`);
   const encryptedPassword = crypto.publicEncrypt(
@@ -208,8 +251,9 @@ const registerEvalUser = async (apiUrl: string) => {
     throw new Error('RAG eval requires dev verification codes in non-production CI');
   }
 
-  const response = await requestJson<{ token: string }>(`${apiUrl}/auth/register`, {
+  await requestJson<{ user: { id: number } }>(`${apiUrl}/auth/register`, {
     method: 'POST',
+    session,
     body: JSON.stringify({
       email,
       encryptedPassword,
@@ -217,10 +261,10 @@ const registerEvalUser = async (apiUrl: string) => {
     }),
   });
 
-  return response.token;
+  return session;
 };
 
-const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCase): Promise<number[]> => {
+const createEvalNote = async (apiUrl: string, session: EvalSession, evalCase: RagEvalCase): Promise<number[]> => {
   const notes = evalCase.notes || (
     evalCase.noteTitle && evalCase.noteContent
       ? [{ title: evalCase.noteTitle, content: evalCase.noteContent }]
@@ -231,7 +275,7 @@ const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCa
   for (const note of notes) {
     const response = await requestJson<{ note: { id: number } }>(`${apiUrl}/notes`, {
       method: 'POST',
-      token,
+      session,
       body: JSON.stringify({
         title: note.title,
         content: note.content,
@@ -245,18 +289,18 @@ const createEvalNote = async (apiUrl: string, token: string, evalCase: RagEvalCa
   return noteIds;
 };
 
-const deleteEvalNotes = async (apiUrl: string, token: string, noteIds: number[]) => {
+const deleteEvalNotes = async (apiUrl: string, session: EvalSession, noteIds: number[]) => {
   for (const noteId of noteIds) {
     await requestJson(`${apiUrl}/notes/${noteId}`, {
       method: 'DELETE',
-      token,
+      session,
     });
   }
 };
 
 const askWithRetry = async (
   apiUrl: string,
-  token: string,
+  session: EvalSession,
   evalCase: RagEvalCase
 ): Promise<RagEvalResult> => {
   let latest: RagEvalResult | null = null;
@@ -267,7 +311,7 @@ const askWithRetry = async (
       citations: RagEvalCitation[];
     }>(`${apiUrl}/rag/ask`, {
       method: 'POST',
-      token,
+      session,
       body: JSON.stringify({
         question: evalCase.question,
         provider: 'demo',
@@ -306,15 +350,15 @@ const askWithRetry = async (
 };
 
 export const runRagEval = async (apiUrl: string) => {
-  const token = await registerEvalUser(apiUrl);
+  const session = await registerEvalUser(apiUrl);
   const results: RagEvalResult[] = [];
 
   for (const evalCase of evalCases) {
-    const noteIds = await createEvalNote(apiUrl, token, evalCase);
+    const noteIds = await createEvalNote(apiUrl, session, evalCase);
     try {
-      results.push(await askWithRetry(apiUrl, token, evalCase));
+      results.push(await askWithRetry(apiUrl, session, evalCase));
     } finally {
-      await deleteEvalNotes(apiUrl, token, noteIds);
+      await deleteEvalNotes(apiUrl, session, noteIds);
       await wait(750);
     }
   }

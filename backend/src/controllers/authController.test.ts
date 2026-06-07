@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/User';
+import { AuthSessionModel } from '../models/AuthSession';
 import { emailVerificationService } from '../services/emailVerificationService';
 import {
   login,
@@ -35,6 +36,14 @@ vi.mock('../models/User', () => ({
   },
 }));
 
+vi.mock('../models/AuthSession', () => ({
+  AuthSessionModel: {
+    create: vi.fn(),
+    revoke: vi.fn(),
+    revokeAllForUser: vi.fn(),
+  },
+}));
+
 vi.mock('../services/emailVerificationService', () => ({
   emailVerificationService: {
     createAndSend: vi.fn(),
@@ -59,6 +68,12 @@ describe('authController', () => {
     process.env.JWT_SECRET = 'test-secret';
     vi.resetAllMocks();
     vi.mocked(jwt.sign).mockReturnValue('token' as any);
+    vi.mocked(AuthSessionModel.create).mockResolvedValue({
+      id: 'session-id',
+      user_id: 1,
+      token_version: 1,
+      expires_at: new Date(),
+    } as any);
   });
 
   it('registers a new user', async () => {
@@ -77,9 +92,12 @@ describe('authController', () => {
       httpOnly: true,
       sameSite: 'lax',
     }));
+    expect(res.cookie).toHaveBeenCalledWith('csrf_token', expect.any(String), expect.objectContaining({
+      httpOnly: false,
+      sameSite: 'lax',
+    }));
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({
-      token: 'token',
       user: { id: 1, email: 'a@example.com' },
     });
   });
@@ -152,12 +170,16 @@ describe('authController', () => {
 
     expect(emailVerificationService.verify).toHaveBeenCalledWith('a@example.com', '123456');
     expect(UserModel.updatePassword).toHaveBeenCalledWith(1, 'new-hash');
+    expect(AuthSessionModel.revokeAllForUser).toHaveBeenCalledWith(1);
     expect(res.cookie).toHaveBeenCalledWith('auth_token', 'token', expect.objectContaining({
       httpOnly: true,
       sameSite: 'lax',
     }));
+    expect(res.cookie).toHaveBeenCalledWith('csrf_token', expect.any(String), expect.objectContaining({
+      httpOnly: false,
+      sameSite: 'lax',
+    }));
     expect(res.json).toHaveBeenCalledWith({
-      token: 'token',
       user: { id: 1, email: 'a@example.com' },
     });
   });
@@ -179,18 +201,20 @@ describe('authController', () => {
       httpOnly: true,
       sameSite: 'lax',
     }));
+    expect(AuthSessionModel.create).toHaveBeenCalledWith(1, expect.any(Date));
     expect(res.json).toHaveBeenCalledWith({
-      token: 'token',
       user: { id: 1, email: 'a@example.com' },
     });
   });
 
-  it('clears the auth cookie on logout', async () => {
+  it('revokes the current session and clears auth cookies on logout', async () => {
     const res = response();
 
-    await logout({} as any, res as any, vi.fn());
+    await logout({ sessionId: 'session-id', userId: 1 } as any, res as any, vi.fn());
 
+    expect(AuthSessionModel.revoke).toHaveBeenCalledWith('session-id', 1);
     expect(res.clearCookie).toHaveBeenCalledWith('auth_token', { path: '/' });
+    expect(res.clearCookie).toHaveBeenCalledWith('csrf_token', { path: '/' });
     expect(res.status).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalled();
   });
