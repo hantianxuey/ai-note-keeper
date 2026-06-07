@@ -18,11 +18,16 @@ const PageFallback = () => (
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const checkAuth = useAuthStore((state) => state.checkAuth);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  if (isLoading) {
+    return <PageFallback />;
+  }
 
   return (
     <Router>
