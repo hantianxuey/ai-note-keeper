@@ -145,7 +145,7 @@ jobs:
 
           (
             source scripts/iac/load-env.sh ci backend
-            node backend/dist/server.js
+            NODE_ENV=development node backend/dist/server.js
           ) > e2e-backend.log 2>&1 &
           backend_pid=$!
           NODE_ENV=development VITE_API_URL=http://127.0.0.1:3100/api npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173 > e2e-frontend.log 2>&1 &
