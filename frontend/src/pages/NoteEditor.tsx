@@ -34,6 +34,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getEditableMarkdown, htmlToMarkdown, markdownToHtml, normalizeMarkdownForPreview } from '../utils/noteContent';
 import { applyMarkdownToolbarAction, type MarkdownToolbarAction } from '../utils/markdownToolbar';
+import { getCursorLineScrollRatio, getScrollTopForRatio, getSyncedScrollTop } from '../utils/splitScroll';
 
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 type RichTextToolbarAction = MarkdownToolbarAction | 'undo' | 'redo';
@@ -57,6 +58,8 @@ export default function NoteEditor() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const markdownTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const splitPreviewRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingSplitScrollRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -277,6 +280,45 @@ export default function NoteEditor() {
     setEditorMode(mode);
   };
 
+  const syncSplitScroll = (
+    source: HTMLTextAreaElement | HTMLDivElement | null,
+    target: HTMLTextAreaElement | HTMLDivElement | null,
+  ) => {
+    if (!source || !target || editorMode !== 'split' || isSyncingSplitScrollRef.current) return;
+
+    isSyncingSplitScrollRef.current = true;
+    target.scrollTop = getSyncedScrollTop({
+      sourceScrollTop: source.scrollTop,
+      sourceScrollHeight: source.scrollHeight,
+      sourceClientHeight: source.clientHeight,
+      targetScrollHeight: target.scrollHeight,
+      targetClientHeight: target.clientHeight,
+    });
+
+    requestAnimationFrame(() => {
+      isSyncingSplitScrollRef.current = false;
+    });
+  };
+
+  const syncSplitPreviewToCursor = (content: string, cursorIndex: number) => {
+    const preview = splitPreviewRef.current;
+    if (!preview || editorMode !== 'split') return;
+
+    const ratio = getCursorLineScrollRatio(content, cursorIndex);
+    preview.scrollTop = getScrollTopForRatio(preview.scrollHeight, preview.clientHeight, ratio);
+  };
+
+  const handleMarkdownChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextContent = event.target.value;
+    setMarkdownContent(nextContent);
+    syncSplitPreviewToCursor(nextContent, event.target.selectionStart);
+  };
+
+  const handleMarkdownCursorChange = (event: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const textArea = event.currentTarget;
+    syncSplitPreviewToCursor(textArea.value, textArea.selectionStart);
+  };
+
   const handleMarkdownToolbarAction = (action: MarkdownToolbarAction) => {
     const textArea = markdownTextAreaRef.current;
     const result = applyMarkdownToolbarAction({
@@ -290,6 +332,7 @@ export default function NoteEditor() {
     requestAnimationFrame(() => {
       markdownTextAreaRef.current?.focus();
       markdownTextAreaRef.current?.setSelectionRange(result.selectionStart, result.selectionEnd);
+      syncSplitPreviewToCursor(result.content, result.selectionStart);
     });
   };
 
@@ -530,7 +573,7 @@ export default function NoteEditor() {
                   <textarea
                     ref={markdownTextAreaRef}
                     value={markdownContent}
-                    onChange={(e) => setMarkdownContent(e.target.value)}
+                    onChange={handleMarkdownChange}
                     placeholder={t('writeMarkdownHere')}
                     className="min-h-[560px] w-full resize-none border-0 bg-card p-6 font-mono text-sm leading-6 outline-none"
                     spellCheck={false}
@@ -552,12 +595,20 @@ export default function NoteEditor() {
                     <textarea
                       ref={markdownTextAreaRef}
                       value={markdownContent}
-                      onChange={(e) => setMarkdownContent(e.target.value)}
+                      onChange={handleMarkdownChange}
+                      onScroll={() => syncSplitScroll(markdownTextAreaRef.current, splitPreviewRef.current)}
+                      onClick={handleMarkdownCursorChange}
+                      onKeyUp={handleMarkdownCursorChange}
+                      onSelect={handleMarkdownCursorChange}
                       placeholder={t('writeMarkdownHere')}
                       className="min-h-[560px] w-full resize-none border-0 border-b border-border bg-card p-6 font-mono text-sm leading-6 outline-none lg:border-b-0 lg:border-r"
                       spellCheck={false}
                     />
-                    <div className="min-h-[560px] overflow-auto bg-card p-6">
+                    <div
+                      ref={splitPreviewRef}
+                      onScroll={() => syncSplitScroll(splitPreviewRef.current, markdownTextAreaRef.current)}
+                      className="min-h-[560px] overflow-auto bg-card p-6"
+                    >
                       <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {previewMarkdown || t('nothingToPreview')}
