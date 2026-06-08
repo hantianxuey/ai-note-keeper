@@ -11,6 +11,7 @@ import {
   requireFields,
   requireUserId,
 } from './controllerUtils';
+import { buildNotePreview } from '../utils/notePreview';
 
 const notePayload = (body: AuthRequest['body']) => ({
   title: body.title,
@@ -33,7 +34,12 @@ const indexInBackground = (
 
 export const listNotes = asyncHandler(async (req: AuthRequest, res) => {
   const notes = await NoteModel.findAllByUserId(requireUserId(req));
-  res.json({ notes });
+  res.json({
+    notes: notes.map(({ content, markdown_content, ...note }) => ({
+      ...note,
+      preview: buildNotePreview({ content, markdown_content }),
+    })),
+  });
 });
 
 export const getNote = asyncHandler(async (req: AuthRequest, res) => {

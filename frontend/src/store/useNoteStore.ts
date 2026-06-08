@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import { Note } from '../types';
+import { Note, NoteSummary } from '../types';
 
 interface NoteState {
-  notes: Note[];
+  notes: NoteSummary[];
   currentNote: Note | null;
   isLoading: boolean;
-  setNotes: (notes: Note[]) => void;
-  addNote: (note: Note) => void;
+  setNotes: (notes: NoteSummary[]) => void;
+  addNote: (note: NoteSummary) => void;
   updateNote: (id: number, note: Partial<Note>) => void;
   deleteNote: (id: number) => void;
   setCurrentNote: (note: Note | null) => void;

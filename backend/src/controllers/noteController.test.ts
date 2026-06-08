@@ -54,14 +54,25 @@ describe('noteController', () => {
   });
 
   it('lists notes for the authenticated user', async () => {
-    const notes = [{ id: 1, title: 'A' }];
+    const notes = [{
+      id: 1,
+      title: 'A',
+      content: '<h2>工作内容</h2>\\n- **RAG** 评测',
+      markdown_content: '# 工作内容\n\n- RAG 评测',
+    }];
     vi.mocked(NoteModel.findAllByUserId).mockResolvedValue(notes as any);
     const res = response();
 
     await listNotes({ userId: 7 } as any, res as any, vi.fn());
 
     expect(NoteModel.findAllByUserId).toHaveBeenCalledWith(7);
-    expect(res.json).toHaveBeenCalledWith({ notes });
+    expect(res.json).toHaveBeenCalledWith({
+      notes: [{
+        id: 1,
+        title: 'A',
+        preview: '工作内容 RAG 评测',
+      }],
+    });
   });
 
   it('returns a note or forwards not-found errors', async () => {

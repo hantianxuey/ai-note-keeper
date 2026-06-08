@@ -26,7 +26,7 @@ export default function Login() {
     setDevCode('');
 
     if (!email.trim()) {
-      setError('Email is required');
+      setError(t('emailRequired'));
       return;
     }
 
@@ -37,7 +37,7 @@ export default function Login() {
     setIsSendingCode(true);
     try {
       const response = await authAPI.sendPasswordResetCode(email.trim());
-      setCodeMessage('Reset code sent. Please check your inbox and spam folder.');
+      setCodeMessage(t('resetCodeSent'));
       setCooldownSeconds(60);
       if (response.data.devCode) {
         setDevCode(response.data.devCode);
@@ -45,8 +45,8 @@ export default function Login() {
       }
     } catch (err: any) {
       const message = err.response?.status === 404
-        ? 'No account was found for this email.'
-        : err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || 'Failed to send reset code';
+        ? t('noAccountForEmail')
+        : err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || t('resetCodeFailed');
       setError(message);
     } finally {
       setIsSendingCode(false);
@@ -60,7 +60,7 @@ export default function Login() {
 
     try {
       if (isResetMode && !verificationCode.trim()) {
-        setError('Verification code is required');
+        setError(t('verificationCodeRequired'));
         return;
       }
 
@@ -75,7 +75,7 @@ export default function Login() {
       setAuth(response.data.user);
       navigate('/');
     } catch (err: any) {
-      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || (isResetMode ? 'Password reset failed.' : t('loginFailed'));
+      const message = err.response?.data?.error?.message || err.response?.data?.error || err.response?.data?.message || (isResetMode ? t('passwordResetFailed') : t('loginFailed'));
       setError(message);
     } finally {
       setIsLoading(false);
@@ -105,27 +105,27 @@ export default function Login() {
             </div>
             <div>
               <div className="text-lg font-bold">AI Note Keeper</div>
-              <div className="text-sm text-white/60">Personal knowledge workspace</div>
+              <div className="text-sm text-white/60">{t('heroSubtitle')}</div>
             </div>
           </div>
 
           <div className="max-w-xl">
             <div className="mb-4 inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-sm text-white/75">
-              RAG notes, semantic search, AI answers
+              {t('heroBadge')}
             </div>
             <h1 className="text-5xl font-bold tracking-tight text-balance">
-              Turn scattered notes into a searchable thinking system.
+              {t('heroTitle')}
             </h1>
             <p className="mt-5 text-lg leading-8 text-white/70">
-              Capture structured notes, import Markdown, and ask your private knowledge base with source-backed answers.
+              {t('heroDescription')}
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-sm">
             {[
-              { icon: BookOpen, title: 'Write', desc: 'Rich text and Markdown' },
-              { icon: BrainCircuit, title: 'Ask', desc: 'RAG over your notes' },
-              { icon: ShieldCheck, title: 'Control', desc: 'Local-first dev setup' },
+              { icon: BookOpen, title: t('featureWriteTitle'), desc: t('featureWriteDesc') },
+              { icon: BrainCircuit, title: t('featureAskTitle'), desc: t('featureAskDesc') },
+              { icon: ShieldCheck, title: t('featureControlTitle'), desc: t('featureControlDesc') },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="rounded-lg border border-white/15 bg-white/10 p-4">
                 <Icon className="mb-3 text-white/80" size={20} />
@@ -144,15 +144,15 @@ export default function Login() {
               <Sparkles size={23} />
             </div>
             <h1 className="text-3xl font-bold">AI Note Keeper</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Your private AI knowledge workspace.</p>
+            <p className="mt-2 text-sm text-muted-foreground">{t('mobileSubtitle')}</p>
           </div>
 
           <div className="surface p-6 sm:p-8">
             <div className="mb-6">
-              <p className="section-label mb-2">Welcome back</p>
-              <h2 className="text-2xl font-bold">{isResetMode ? 'Reset password' : t('loginTitle')}</h2>
+              <p className="section-label mb-2">{t('welcomeBack')}</p>
+              <h2 className="text-2xl font-bold">{isResetMode ? t('resetPasswordTitle') : t('loginTitle')}</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {isResetMode ? 'Verify your email and choose a new password.' : 'Continue writing, searching, and asking your notes.'}
+                {isResetMode ? t('resetPasswordDescription') : t('loginDescription')}
               </p>
             </div>
 
@@ -182,7 +182,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-field"
-                  placeholder={isResetMode ? 'New password' : t('passwordPlaceholder')}
+                  placeholder={isResetMode ? t('newPasswordPlaceholder') : t('passwordPlaceholder')}
                   required
                 />
               </div>
@@ -190,7 +190,7 @@ export default function Login() {
               {isResetMode && (
                 <div>
                   <label htmlFor="verificationCode" className="mb-1.5 block text-sm font-semibold">
-                    Verification Code
+                    {t('verificationCode')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -209,7 +209,7 @@ export default function Login() {
                       disabled={isSendingCode || cooldownSeconds > 0 || !email.trim()}
                       className="btn-secondary whitespace-nowrap px-3"
                     >
-                      {isSendingCode ? 'Sending...' : cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'Send Code'}
+                      {isSendingCode ? t('sendingCode') : cooldownSeconds > 0 ? `${cooldownSeconds}s` : t('sendCode')}
                     </button>
                   </div>
                   {codeMessage && (
@@ -219,7 +219,7 @@ export default function Login() {
                   )}
                   {devCode && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Dev reset code: {devCode}
+                      {t('devResetCode', { code: devCode })}
                     </p>
                   )}
                 </div>
@@ -232,7 +232,7 @@ export default function Login() {
               )}
 
               <button type="submit" disabled={isLoading} className="btn-accent w-full py-2.5">
-                {isLoading ? (isResetMode ? 'Resetting...' : t('loggingIn')) : (isResetMode ? 'Reset password' : t('loginButton'))}
+                {isLoading ? (isResetMode ? t('resettingPassword') : t('loggingIn')) : (isResetMode ? t('resetPasswordButton') : t('loginButton'))}
               </button>
             </form>
 
@@ -246,7 +246,7 @@ export default function Login() {
               }}
               className="mt-4 w-full text-center text-sm font-semibold text-accent hover:underline"
             >
-              {isResetMode ? 'Back to login' : 'Forgot password?'}
+              {isResetMode ? t('backToLogin') : t('forgotPassword')}
             </button>
 
             <p className="mt-6 text-center text-sm text-muted-foreground">

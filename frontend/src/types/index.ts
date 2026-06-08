@@ -18,6 +18,19 @@ export interface Note {
   updated_at: string;
 }
 
+export interface NoteSummary {
+  id: number;
+  user_id: number;
+  title: string;
+  preview?: string;
+  content?: string;
+  markdown_content?: string | null;
+  tags: string[] | null;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Conversation {
   id: number;
   user_id: number;

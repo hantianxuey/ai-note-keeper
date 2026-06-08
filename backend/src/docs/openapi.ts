@@ -82,6 +82,21 @@ export const openApiSpec = {
         },
         required: ['id', 'user_id', 'title', 'content'],
       },
+      NoteSummary: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          user_id: { type: 'integer' },
+          title: { type: 'string' },
+          preview: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' }, nullable: true },
+          category: { type: 'string', nullable: true },
+          ai_summary: { type: 'string', nullable: true },
+          created_at: { type: 'string', format: 'date-time' },
+          updated_at: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'user_id', 'title', 'preview'],
+      },
       Citation: {
         type: 'object',
         properties: {
@@ -247,7 +262,25 @@ export const openApiSpec = {
         tags: ['Notes'],
         summary: 'List notes',
         security: [{ cookieAuth: [] }],
-        responses: { '200': { description: 'Notes for current user' } },
+        responses: {
+          '200': {
+            description: 'Note summaries for current user; full note content is available from GET /notes/{id}',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    notes: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/NoteSummary' },
+                    },
+                  },
+                  required: ['notes'],
+                },
+              },
+            },
+          },
+        },
       },
       post: {
         tags: ['Notes'],

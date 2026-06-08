@@ -7,6 +7,7 @@ import { notesAPI } from '../services/api';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import AppShell from '../components/AppShell';
+import { getNotePreview } from '../utils/noteContent';
 
 export default function Home() {
   const { t, i18n } = useTranslation('notes');
@@ -43,7 +44,7 @@ export default function Home() {
 
   const filteredNotes = notes.filter((note) =>
     note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    (note.preview || getNotePreview(note)).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getLocale = () => {
@@ -158,7 +159,7 @@ export default function Home() {
                     {note.title || t('untitled', { ns: 'common' })}
                   </h3>
                   <p className="text-sm text-muted-foreground mb-4 line-clamp-4 leading-6">
-                    {note.content.replace(/#|```|\*\*/g, '').slice(0, 150)}
+                    {note.preview || getNotePreview(note)}
                   </p>
               <div className="flex flex-wrap gap-2">
                 {(note.tags || []).slice(0, 3).map((tag) => (

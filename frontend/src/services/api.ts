@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AskResponse, Conversation, Note, User } from '../types';
+import { AskResponse, Conversation, Note, NoteSummary, User } from '../types';
 import { encryptWithPublicKey } from '../utils/requestEncryption';
 
 export const resolveApiBaseUrl = (configuredUrl?: string, isProduction = false) => {
@@ -159,7 +159,7 @@ export const authAPI = {
 };
 
 export const notesAPI = {
-  list: () => api.get<{ notes: Note[] }>('/notes'),
+  list: () => api.get<{ notes: NoteSummary[] }>('/notes'),
   get: (id: number) => api.get<{ note: Note }>('/notes/' + id),
   create: (data: Partial<Note>) => api.post<{ note: Note }>('/notes', data),
   update: (id: number, data: Partial<Note>) => api.put<{ note: Note }>('/notes/' + id, data),

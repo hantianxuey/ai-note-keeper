@@ -10,6 +10,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getEditableMarkdown, htmlToMarkdown, markdownToHtml } from '../utils/noteContent';
 
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 
@@ -56,66 +57,6 @@ export default function NoteEditor() {
     },
   });
 
-  const htmlToMarkdown = (html: string): string => {
-    let markdown = html
-      .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
-      .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
-      .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
-      .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
-      .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n')
-      .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n')
-      .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-      .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
-      .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-      .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
-      .replace(/<ul[^>]*>(.*?)<\/ul>/gi, (_match, content) => {
-        return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
-      })
-      .replace(/<ol[^>]*>(.*?)<\/ol>/gi, (_match, content) => {
-        let i = 1;
-        return content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => `${i++}. $1\n`);
-      })
-      .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
-      .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
-      .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '```\n$1\n```\n')
-      .replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)\n')
-      .replace(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"[^>]*>/gi, '![$1]($2)\n')
-      .replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)\n')
-      .replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
-      .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n')
-      .replace(/<hr\s*\/?>/gi, '---\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&');
-    return markdown.trim();
-  };
-
-  const markdownToHtml = (markdown: string): string => {
-    let html = markdown
-      .replace(/^###### (.*)$/gm, '<h6>$1</h6>')
-      .replace(/^##### (.*)$/gm, '<h5>$1</h5>')
-      .replace(/^#### (.*)$/gm, '<h4>$1</h4>')
-      .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code>$1</code>')
-      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-      .replace(/!\[([^\]]*)]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
-      .replace(/^\[x\] (.*)$/gm, '<li><input type="checkbox" checked disabled> $1</li>')
-      .replace(/^\[ \] (.*)$/gm, '<li><input type="checkbox" disabled> $1</li>')
-      .replace(/^- (.*)$/gm, '<li>$1</li>')
-      .replace(/^\d+\. (.*)$/gm, '<li>$1</li>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>');
-    return `<p>${html}</p>`;
-  };
-
   useEffect(() => {
     if (id && id !== 'new') {
       loadNote(parseInt(id));
@@ -142,21 +83,12 @@ export default function NoteEditor() {
       setCategory(response.data.note.category || '');
       setSummary(response.data.note.ai_summary || '');
       setSummarySourceContent('');
-      if (response.data.note.content) {
-        const isHtml = response.data.note.content.includes('<');
-        if (isHtml) {
-          const loadedMarkdown = htmlToMarkdown(response.data.note.content);
-          if (editor) {
-            editor.commands.setContent(response.data.note.content);
-          }
-          setMarkdownContent(loadedMarkdown);
-          setSummarySourceContent(response.data.note.ai_summary ? loadedMarkdown : '');
-        } else {
-          setMarkdownContent(response.data.note.content);
-          setSummarySourceContent(response.data.note.ai_summary ? response.data.note.content : '');
-          if (editor) {
-            editor.commands.setContent(markdownToHtml(response.data.note.content));
-          }
+      if (response.data.note.content || response.data.note.markdown_content) {
+        const loadedMarkdown = getEditableMarkdown(response.data.note);
+        setMarkdownContent(loadedMarkdown);
+        setSummarySourceContent(response.data.note.ai_summary ? loadedMarkdown : '');
+        if (editor) {
+          editor.commands.setContent(markdownToHtml(loadedMarkdown));
         }
       }
     } catch (error) {
