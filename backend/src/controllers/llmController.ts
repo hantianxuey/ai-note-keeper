@@ -67,14 +67,33 @@ export const getModels = (
   }
 };
 
-export const getAllModels = (
-  _req: AuthRequest,
+export const getAllModels = async (
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const models = llmService.getAllAvailableModels();
-    res.json({ models });
+    const userId = requireUserId(req);
+    const dbConfigs = await LLMConfigModel.listMasked(userId);
+    const dbConfigMap = new Map(dbConfigs.map((c) => [c.provider_key, c]));
+
+    const models: Array<{ provider: string; model: string; providerName: string }> = [];
+    Object.keys(LLM_PROVIDERS).forEach((key) => {
+      const provider = LLM_PROVIDERS[key];
+      const dbConfig = dbConfigMap.get(key);
+      const hasKey = !!(provider.isDemo || (dbConfig && dbConfig.has_key));
+      if (hasKey) {
+        provider.models.forEach((model) => {
+          models.push({
+            provider: key,
+            model: model,
+            providerName: provider.name,
+          });
+        });
+      }
+    });
+
+    res.json({ models: models });
   } catch (error) {
     next(error);
   }
