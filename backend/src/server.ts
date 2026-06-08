@@ -13,6 +13,7 @@ import { metricsMiddleware, requestLogger } from './middleware/observability';
 import { metricsRegistry } from './observability/metrics';
 import { openApiSpec, swaggerHtml } from './docs/openapi';
 import { csrfProtection } from './middleware/csrf';
+import { applyPendingMigrations } from './config/migrationRunner';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -117,6 +118,20 @@ app.use(errorHandler);
 app.listen(PORT, async () => {
   logger.info({ port: PORT }, `Server is running on http://localhost:${PORT}`);
   logger.info({ environment: process.env.NODE_ENV || 'development' }, 'Environment loaded');
+  
+  // 自动应用待处理的数据库迁移
+  try {
+    const applied = await applyPendingMigrations();
+    if (applied.length > 0) {
+      logger.info({ migrations: applied }, 'Successfully applied database migrations');
+    } else {
+      logger.info('Database schema is up to date');
+    }
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to apply database migrations');
+    process.exit(1);
+  }
+
   if (process.env.REINDEX_ON_STARTUP !== 'true') {
     logger.info('Startup reindex skipped. Set REINDEX_ON_STARTUP=true to enable it.');
     return;
