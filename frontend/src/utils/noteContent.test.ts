@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getEditableMarkdown, getNotePreview } from './noteContent';
+import { getEditableMarkdown, getNotePreview, normalizeMarkdownForPreview } from './noteContent';
 import type { Note } from '../types';
 
 const makeNote = (overrides: Partial<Note>): Note => ({
@@ -41,5 +41,32 @@ describe('note content helpers', () => {
     });
 
     expect(getNotePreview(note, 18)).toBe('工作内容 这是一个很长的 Markdown...');
+  });
+
+  it('normalizes box-drawing tables into GitHub-flavored markdown tables for preview', () => {
+    const markdown = [
+      '提交统计',
+      '',
+      '┌──────────────┬────────┐',
+      '',
+      '│ 类别 │ 数量 │',
+      '',
+      '├──────────────┼────────┤',
+      '',
+      '│ 总提交 │ ~75 个 │',
+      '',
+      '├──────────────┼────────┤',
+      '',
+      '│ 功能特性开发 │ ~50 个 │',
+      '',
+      '└──────────────┴────────┘',
+    ].join('\n');
+
+    expect(normalizeMarkdownForPreview(markdown)).toContain([
+      '| 类别 | 数量 |',
+      '| --- | --- |',
+      '| 总提交 | ~75 个 |',
+      '| 功能特性开发 | ~50 个 |',
+    ].join('\n'));
   });
 });

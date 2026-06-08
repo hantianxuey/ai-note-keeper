@@ -10,7 +10,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getEditableMarkdown, htmlToMarkdown, markdownToHtml } from '../utils/noteContent';
+import { getEditableMarkdown, htmlToMarkdown, markdownToHtml, normalizeMarkdownForPreview } from '../utils/noteContent';
 
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 
@@ -258,6 +258,7 @@ export default function NoteEditor() {
     { mode: 'preview', icon: <Eye size={14} />, label: t('preview') },
     { mode: 'split', icon: <Columns size={14} />, label: t('split') },
   ];
+  const previewMarkdown = normalizeMarkdownForPreview(markdownContent);
 
   return (
     <div className="app-shell">
@@ -371,7 +372,7 @@ export default function NoteEditor() {
                   <div className="min-h-[560px] bg-card p-6">
                     <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {markdownContent || t('nothingToPreview')}
+                        {previewMarkdown || t('nothingToPreview')}
                       </ReactMarkdown>
                     </article>
                   </div>
@@ -389,7 +390,7 @@ export default function NoteEditor() {
                     <div className="min-h-[560px] overflow-auto bg-card p-6">
                       <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {markdownContent || t('nothingToPreview')}
+                          {previewMarkdown || t('nothingToPreview')}
                         </ReactMarkdown>
                       </article>
                     </div>

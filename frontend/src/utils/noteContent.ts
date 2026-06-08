@@ -9,6 +9,86 @@ const decodeEntities = (value: string): string => {
   return textarea.value;
 };
 
+const isBoxTableBorder = (line: string): boolean =>
+  /^[┌├└┬┼┴┐┤┘─\s]+$/.test(line.trim());
+
+const isBoxTableRow = (line: string): boolean =>
+  line.trim().startsWith('│') && line.trim().endsWith('│');
+
+const parseBoxTableRow = (line: string): string[] =>
+  line
+    .trim()
+    .replace(/^│|│$/g, '')
+    .split('│')
+    .map((cell) => cell.trim());
+
+const boxTableToMarkdown = (rows: string[][]): string[] => {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const normalizedRows = rows.map((row) => [
+    ...row,
+    ...Array(Math.max(0, columnCount - row.length)).fill(''),
+  ]);
+  const [header, ...body] = normalizedRows;
+
+  return [
+    `| ${header.join(' | ')} |`,
+    `| ${Array(columnCount).fill('---').join(' | ')} |`,
+    ...body.map((row) => `| ${row.join(' | ')} |`),
+  ];
+};
+
+export const normalizeMarkdownForPreview = (markdown: string): string => {
+  const lines = normalizeNewlines(markdown).split('\n');
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!isBoxTableBorder(line)) {
+      output.push(line);
+      index += 1;
+      continue;
+    }
+
+    const rows: string[][] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor];
+      if (!current.trim()) {
+        cursor += 1;
+        continue;
+      }
+
+      if (isBoxTableBorder(current)) {
+        cursor += 1;
+        continue;
+      }
+
+      if (isBoxTableRow(current)) {
+        rows.push(parseBoxTableRow(current));
+        cursor += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    if (rows.length >= 2) {
+      output.push(...boxTableToMarkdown(rows));
+      index = cursor;
+    } else {
+      output.push(line);
+      index += 1;
+    }
+  }
+
+  return output.join('\n');
+};
+
 export const htmlToMarkdown = (html: string): string => {
   const normalized = normalizeNewlines(html);
   const markdown = normalized
