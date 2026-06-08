@@ -49,3 +49,59 @@ test('user can create, search, and ask over a note', async ({ page }) => {
   await expect(page.getByText('What should CI verify?')).toBeVisible();
   await expect(page.getByText(/Demo Mode|knowledge base|reliable information/)).toBeVisible();
 });
+
+test('split editor keeps panes internally scrollable and syncs preview scrolling', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('i18nextLng', 'en');
+  });
+
+  const email = `e2e-split-${Date.now()}@example.com`;
+  const password = 'secret123';
+  const longMarkdown = Array.from(
+    { length: 80 },
+    (_, index) => `## Section ${index + 1}\n\n- item ${index + 1}\n- more content ${index + 1}`,
+  ).join('\n\n');
+
+  await page.goto('/register');
+  await page.locator('#email').fill(email);
+  await page.getByRole('button', { name: 'Send Code' }).click();
+  await expect(page.getByText(/Dev verification code:/)).toBeVisible();
+  await page.locator('#password').fill(password);
+  await page.locator('#confirmPassword').fill(password);
+  await page.getByRole('button', { name: 'Register' }).click();
+
+  await expect(page.getByRole('heading', { name: 'My Notes' })).toBeVisible();
+
+  await page.goto('/notes/new');
+  await page.getByPlaceholder('Note title').fill('Split Editor Scroll Sync');
+  await page.getByRole('button', { name: 'Markdown' }).click();
+  await page.getByPlaceholder(/Write your note in Markdown/).fill(longMarkdown);
+  await page.getByRole('button', { name: 'Split' }).click();
+
+  const metrics = await page.evaluate(() => {
+    const textarea = document.querySelector('[data-testid="split-markdown-pane"]');
+    const preview = document.querySelector('[data-testid="split-preview-pane"]');
+
+    return {
+      bodyScrollHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      textareaClientHeight: textarea?.clientHeight ?? 0,
+      textareaScrollHeight: textarea?.scrollHeight ?? 0,
+      previewClientHeight: preview?.clientHeight ?? 0,
+      previewScrollHeight: preview?.scrollHeight ?? 0,
+    };
+  });
+
+  expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 900);
+  expect(metrics.textareaScrollHeight).toBeGreaterThan(metrics.textareaClientHeight + 100);
+  expect(metrics.previewScrollHeight).toBeGreaterThan(metrics.previewClientHeight + 100);
+
+  await page.locator('textarea').evaluate((textarea) => {
+    textarea.scrollTop = 700;
+    textarea.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+
+  await expect
+    .poll(async () => page.getByTestId('split-preview-pane').evaluate((preview) => preview.scrollTop))
+    .toBeGreaterThan(50);
+});

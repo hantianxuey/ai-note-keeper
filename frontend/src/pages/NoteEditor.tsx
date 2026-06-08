@@ -39,6 +39,8 @@ import { getCursorLineScrollRatio, getScrollTopForRatio, getSyncedScrollTop } fr
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 type RichTextToolbarAction = MarkdownToolbarAction | 'undo' | 'redo';
 
+const editorPaneHeightClass = 'h-[calc(100vh-18rem)] min-h-[360px]';
+
 export default function NoteEditor() {
   const { t } = useTranslation('notes');
   const { id } = useParams();
@@ -74,7 +76,7 @@ export default function NoteEditor() {
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg max-w-none focus:outline-none min-h-[300px] p-4',
+        class: 'prose prose-sm sm:prose lg:prose-lg max-w-none focus:outline-none min-h-full p-4',
       },
     },
     onUpdate: ({ editor }) => {
@@ -478,7 +480,7 @@ export default function NoteEditor() {
         </div>
       </header>
 
-      <main className="page-container">
+      <main className="page-container pb-3">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="min-w-0 space-y-4">
             <div className="surface p-4 sm:p-6">
@@ -564,24 +566,31 @@ export default function NoteEditor() {
 
               <div className={`${editorMode === 'split' ? 'grid grid-cols-1 gap-0 lg:grid-cols-2' : ''}`}>
                 {editorMode === 'richtext' && (
-                  <div className="min-h-[560px] bg-card">
+                  <div
+                    data-testid="richtext-editor-pane"
+                    className={`${editorPaneHeightClass} overflow-auto bg-card`}
+                  >
                     <EditorContent editor={editor} />
                   </div>
                 )}
 
                 {editorMode === 'markdown' && (
                   <textarea
+                    data-testid="markdown-editor-pane"
                     ref={markdownTextAreaRef}
                     value={markdownContent}
                     onChange={handleMarkdownChange}
                     placeholder={t('writeMarkdownHere')}
-                    className="min-h-[560px] w-full resize-none border-0 bg-card p-6 font-mono text-sm leading-6 outline-none"
+                    className={`${editorPaneHeightClass} w-full resize-none overflow-auto border-0 bg-card p-6 font-mono text-sm leading-6 outline-none`}
                     spellCheck={false}
                   />
                 )}
 
                 {editorMode === 'preview' && (
-                  <div className="min-h-[560px] bg-card p-6">
+                  <div
+                    data-testid="preview-editor-pane"
+                    className={`${editorPaneHeightClass} overflow-auto bg-card p-6`}
+                  >
                     <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {previewMarkdown || t('nothingToPreview')}
@@ -593,6 +602,7 @@ export default function NoteEditor() {
                 {editorMode === 'split' && (
                   <>
                     <textarea
+                      data-testid="split-markdown-pane"
                       ref={markdownTextAreaRef}
                       value={markdownContent}
                       onChange={handleMarkdownChange}
@@ -601,13 +611,14 @@ export default function NoteEditor() {
                       onKeyUp={handleMarkdownCursorChange}
                       onSelect={handleMarkdownCursorChange}
                       placeholder={t('writeMarkdownHere')}
-                      className="min-h-[560px] w-full resize-none border-0 border-b border-border bg-card p-6 font-mono text-sm leading-6 outline-none lg:border-b-0 lg:border-r"
+                      className={`${editorPaneHeightClass} w-full resize-none overflow-auto border-0 border-b border-border bg-card p-6 font-mono text-sm leading-6 outline-none lg:border-b-0 lg:border-r`}
                       spellCheck={false}
                     />
                     <div
+                      data-testid="split-preview-pane"
                       ref={splitPreviewRef}
                       onScroll={() => syncSplitScroll(splitPreviewRef.current, markdownTextAreaRef.current)}
-                      className="min-h-[560px] overflow-auto bg-card p-6"
+                      className={`${editorPaneHeightClass} overflow-auto bg-card p-6`}
                     >
                       <article className="prose prose-sm sm:prose lg:prose-lg max-w-none">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
