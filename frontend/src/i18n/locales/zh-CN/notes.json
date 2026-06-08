@@ -40,5 +40,18 @@
   "pleaseEnterTitle": "请输入标题",
   "saveFailed": "保存笔记失败",
   "deleteFailed": "删除笔记失败",
-  "summaryFailed": "生成摘要失败"
+  "summaryFailed": "生成摘要失败",
+  "toolbar": {
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "bold": "加粗",
+    "italic": "斜体",
+    "bulletList": "无序列表",
+    "orderedList": "有序列表",
+    "blockquote": "引用",
+    "codeBlock": "代码块",
+    "table": "插入表格",
+    "undo": "撤销",
+    "redo": "重做"
+  }
 }

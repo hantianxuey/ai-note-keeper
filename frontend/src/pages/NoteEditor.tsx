@@ -1,7 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Trash2, FileUp, Sparkles, Eye, Edit, Columns, FileText, Image as ImageIcon } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  Trash2,
+  FileUp,
+  Sparkles,
+  Eye,
+  Edit,
+  Columns,
+  FileText,
+  Image as ImageIcon,
+  Bold,
+  Italic,
+  Heading1,
+  Heading2,
+  List,
+  ListOrdered,
+  Quote,
+  Code2,
+  Table,
+  Undo2,
+  Redo2,
+} from 'lucide-react';
 import { useNoteStore } from '../store/useNoteStore';
 import { notesAPI, aiAPI, attachmentsAPI } from '../services/api';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -11,8 +33,10 @@ import Image from '@tiptap/extension-image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getEditableMarkdown, htmlToMarkdown, markdownToHtml, normalizeMarkdownForPreview } from '../utils/noteContent';
+import { applyMarkdownToolbarAction, type MarkdownToolbarAction } from '../utils/markdownToolbar';
 
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
+type RichTextToolbarAction = MarkdownToolbarAction | 'undo' | 'redo';
 
 export default function NoteEditor() {
   const { t } = useTranslation('notes');
@@ -32,6 +56,7 @@ export default function NoteEditor() {
   const [isImporting, setIsImporting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const markdownTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -252,11 +277,123 @@ export default function NoteEditor() {
     setEditorMode(mode);
   };
 
+  const handleMarkdownToolbarAction = (action: MarkdownToolbarAction) => {
+    const textArea = markdownTextAreaRef.current;
+    const result = applyMarkdownToolbarAction({
+      action,
+      content: markdownContent,
+      selectionStart: textArea?.selectionStart ?? markdownContent.length,
+      selectionEnd: textArea?.selectionEnd ?? markdownContent.length,
+    });
+
+    setMarkdownContent(result.content);
+    requestAnimationFrame(() => {
+      markdownTextAreaRef.current?.focus();
+      markdownTextAreaRef.current?.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  };
+
+  const handleRichTextToolbarAction = (action: RichTextToolbarAction) => {
+    if (!editor) return;
+
+    const chain = editor.chain().focus();
+    switch (action) {
+      case 'heading1':
+        chain.toggleHeading({ level: 1 }).run();
+        break;
+      case 'heading2':
+        chain.toggleHeading({ level: 2 }).run();
+        break;
+      case 'bold':
+        chain.toggleBold().run();
+        break;
+      case 'italic':
+        chain.toggleItalic().run();
+        break;
+      case 'bulletList':
+        chain.toggleBulletList().run();
+        break;
+      case 'orderedList':
+        chain.toggleOrderedList().run();
+        break;
+      case 'blockquote':
+        chain.toggleBlockquote().run();
+        break;
+      case 'codeBlock':
+        chain.toggleCodeBlock().run();
+        break;
+      case 'undo':
+        chain.undo().run();
+        break;
+      case 'redo':
+        chain.redo().run();
+        break;
+      case 'table':
+        break;
+    }
+
+    setMarkdownContent(htmlToMarkdown(editor.getHTML()));
+  };
+
+  const handleToolbarAction = (action: RichTextToolbarAction) => {
+    if (editorMode === 'preview') return;
+    if (editorMode === 'richtext') {
+      handleRichTextToolbarAction(action);
+      return;
+    }
+    if (action !== 'undo' && action !== 'redo') {
+      handleMarkdownToolbarAction(action);
+    }
+  };
+
+  const isRichTextActionActive = (action: RichTextToolbarAction) => {
+    if (!editor || editorMode !== 'richtext') return false;
+    switch (action) {
+      case 'heading1':
+        return editor.isActive('heading', { level: 1 });
+      case 'heading2':
+        return editor.isActive('heading', { level: 2 });
+      case 'bold':
+        return editor.isActive('bold');
+      case 'italic':
+        return editor.isActive('italic');
+      case 'bulletList':
+        return editor.isActive('bulletList');
+      case 'orderedList':
+        return editor.isActive('orderedList');
+      case 'blockquote':
+        return editor.isActive('blockquote');
+      case 'codeBlock':
+        return editor.isActive('codeBlock');
+      default:
+        return false;
+    }
+  };
+
   const modeButtons: { mode: EditorMode; icon: React.ReactNode; label: string }[] = [
     { mode: 'richtext', icon: <Edit size={14} />, label: t('richText') },
     { mode: 'markdown', icon: <FileText size={14} />, label: t('markdown') },
     { mode: 'preview', icon: <Eye size={14} />, label: t('preview') },
     { mode: 'split', icon: <Columns size={14} />, label: t('split') },
+  ];
+  const toolbarButtons: {
+    action: RichTextToolbarAction;
+    icon: React.ReactNode;
+    label: string;
+    markdownOnly?: boolean;
+    richTextOnly?: boolean;
+  }[] = [
+    { action: 'heading1', icon: <Heading1 size={17} />, label: t('toolbar.heading1') },
+    { action: 'heading2', icon: <Heading2 size={17} />, label: t('toolbar.heading2') },
+    { action: 'bold', icon: <Bold size={17} />, label: t('toolbar.bold') },
+    { action: 'italic', icon: <Italic size={17} />, label: t('toolbar.italic') },
+    { action: 'bulletList', icon: <List size={17} />, label: t('toolbar.bulletList') },
+    { action: 'orderedList', icon: <ListOrdered size={17} />, label: t('toolbar.orderedList') },
+    { action: 'blockquote', icon: <Quote size={17} />, label: t('toolbar.blockquote') },
+    { action: 'codeBlock', icon: <Code2 size={17} />, label: t('toolbar.codeBlock') },
+    { action: 'table', icon: <Table size={17} />, label: t('toolbar.table'), markdownOnly: true },
+    { action: 'undo', icon: <Undo2 size={17} />, label: t('toolbar.undo'), richTextOnly: true },
+    { action: 'redo', icon: <Redo2 size={17} />, label: t('toolbar.redo'), richTextOnly: true },
   ];
   const previewMarkdown = normalizeMarkdownForPreview(markdownContent);
 
@@ -350,6 +487,37 @@ export default function NoteEditor() {
                   disabled={isUploadingImage}
                 />
               </div>
+              <div className="flex min-h-12 flex-wrap items-center gap-1 border-b border-border bg-card px-3 py-2">
+                {toolbarButtons
+                  .filter(({ markdownOnly, richTextOnly }) => {
+                    if (markdownOnly) return editorMode !== 'richtext';
+                    if (richTextOnly) return editorMode === 'richtext';
+                    return true;
+                  })
+                  .map(({ action, icon, label }) => {
+                    const active = isRichTextActionActive(action);
+                    const disabled = editorMode === 'preview' || (editorMode === 'richtext' && !editor);
+
+                    return (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => handleToolbarAction(action)}
+                        disabled={disabled}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                          active
+                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                            : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                      >
+                        {icon}
+                      </button>
+                    );
+                  })}
+              </div>
 
               <div className={`${editorMode === 'split' ? 'grid grid-cols-1 gap-0 lg:grid-cols-2' : ''}`}>
                 {editorMode === 'richtext' && (
@@ -360,6 +528,7 @@ export default function NoteEditor() {
 
                 {editorMode === 'markdown' && (
                   <textarea
+                    ref={markdownTextAreaRef}
                     value={markdownContent}
                     onChange={(e) => setMarkdownContent(e.target.value)}
                     placeholder={t('writeMarkdownHere')}
@@ -381,6 +550,7 @@ export default function NoteEditor() {
                 {editorMode === 'split' && (
                   <>
                     <textarea
+                      ref={markdownTextAreaRef}
                       value={markdownContent}
                       onChange={(e) => setMarkdownContent(e.target.value)}
                       placeholder={t('writeMarkdownHere')}

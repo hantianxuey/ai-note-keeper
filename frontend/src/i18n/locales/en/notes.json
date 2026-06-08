@@ -41,5 +41,17 @@
   "saveFailed": "Failed to save note",
   "deleteFailed": "Failed to delete note",
   "summaryFailed": "Failed to generate summary",
-  "importing": "Importing..."
+  "toolbar": {
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "bold": "Bold",
+    "italic": "Italic",
+    "bulletList": "Bullet list",
+    "orderedList": "Ordered list",
+    "blockquote": "Blockquote",
+    "codeBlock": "Code block",
+    "table": "Insert table",
+    "undo": "Undo",
+    "redo": "Redo"
+  }
 }
