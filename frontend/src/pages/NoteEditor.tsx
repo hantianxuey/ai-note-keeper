@@ -39,7 +39,7 @@ import { getCursorLineScrollRatio, getScrollTopForRatio, getSyncedScrollTop } fr
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 type RichTextToolbarAction = MarkdownToolbarAction | 'undo' | 'redo';
 
-const editorPaneHeightClass = 'h-[calc(100vh-18rem)] min-h-[360px]';
+const editorPaneHeightClass = 'h-[calc(100vh-21.5rem)] min-h-[320px] max-h-[560px]';
 
 export default function NoteEditor() {
   const { t } = useTranslation('notes');
@@ -480,8 +480,8 @@ export default function NoteEditor() {
         </div>
       </header>
 
-      <main className="page-container pb-3">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <main className="page-container py-3">
+        <div className={`grid gap-4 ${editorMode === 'split' ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_280px]'}`}>
           <section className="min-w-0 space-y-4">
             <div className="surface p-4 sm:p-6">
               <input
@@ -570,7 +570,7 @@ export default function NoteEditor() {
                     data-testid="richtext-editor-pane"
                     className={`${editorPaneHeightClass} overflow-auto bg-card`}
                   >
-                    <EditorContent editor={editor} />
+                    <EditorContent editor={editor} className="min-h-full" />
                   </div>
                 )}
 
@@ -607,9 +607,7 @@ export default function NoteEditor() {
                       value={markdownContent}
                       onChange={handleMarkdownChange}
                       onScroll={() => syncSplitScroll(markdownTextAreaRef.current, splitPreviewRef.current)}
-                      onClick={handleMarkdownCursorChange}
                       onKeyUp={handleMarkdownCursorChange}
-                      onSelect={handleMarkdownCursorChange}
                       placeholder={t('writeMarkdownHere')}
                       className={`${editorPaneHeightClass} w-full resize-none overflow-auto border-0 border-b border-border bg-card p-6 font-mono text-sm leading-6 outline-none lg:border-b-0 lg:border-r`}
                       spellCheck={false}
@@ -632,10 +630,10 @@ export default function NoteEditor() {
             </div>
           </section>
 
-          <aside className="space-y-4">
-            <div className="surface p-5">
-              <h2 className="mb-4 text-lg font-semibold">Metadata</h2>
-              <div className="space-y-4">
+          <aside className={editorMode === 'split' ? 'grid gap-3 md:grid-cols-2' : 'space-y-4'}>
+            <div className={`surface ${editorMode === 'split' ? 'p-3' : 'p-5'}`}>
+              <h2 className={`${editorMode === 'split' ? 'mb-2 text-sm' : 'mb-4 text-lg'} font-semibold`}>Metadata</h2>
+              <div className={editorMode === 'split' ? 'grid gap-3 sm:grid-cols-2' : 'space-y-4'}>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-muted-foreground">
                 {t('tags')}
@@ -663,18 +661,18 @@ export default function NoteEditor() {
           </div>
             </div>
 
-            <div className="surface p-5">
-              <h2 className="mb-4 text-lg font-semibold">AI tools</h2>
-              <div className="space-y-3">
+            <div className={`surface ${editorMode === 'split' ? 'p-3' : 'p-5'}`}>
+              <h2 className={`${editorMode === 'split' ? 'mb-2 text-sm' : 'mb-4 text-lg'} font-semibold`}>AI tools</h2>
+              <div className={editorMode === 'split' ? 'flex flex-wrap gap-2' : 'space-y-3'}>
             <button
               onClick={handleGenerateSummary}
               disabled={isGeneratingSummary}
-                  className="btn-secondary w-full justify-start"
+                  className={`btn-secondary justify-start ${editorMode === 'split' ? 'flex-1 px-3 py-2' : 'w-full'}`}
             >
               <Sparkles size={18} />
               {isGeneratingSummary ? t('generating') : t('generateSummary')}
             </button>
-                <label className={`btn-secondary w-full justify-start ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <label className={`btn-secondary justify-start ${editorMode === 'split' ? 'flex-1 px-3 py-2' : 'w-full'} ${isImporting ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <FileUp size={18} />
               <span>{isImporting ? t('importing') : t('importFile')}</span>
               <input
@@ -685,7 +683,7 @@ export default function NoteEditor() {
                 disabled={isImporting}
               />
             </label>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <div className={`flex flex-wrap items-center gap-2 text-sm text-muted-foreground ${editorMode === 'split' ? 'w-full' : ''}`}>
               <span>{t('supportedFormats')}</span>
                   <code className="chip">.md</code>
                   <code className="chip">.txt</code>

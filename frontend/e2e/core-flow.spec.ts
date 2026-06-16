@@ -87,14 +87,18 @@ test('split editor keeps panes internally scrollable and syncs preview scrolling
       viewportHeight: window.innerHeight,
       textareaClientHeight: textarea?.clientHeight ?? 0,
       textareaScrollHeight: textarea?.scrollHeight ?? 0,
+      textareaWidth: textarea?.getBoundingClientRect().width ?? 0,
       previewClientHeight: preview?.clientHeight ?? 0,
       previewScrollHeight: preview?.scrollHeight ?? 0,
+      previewWidth: preview?.getBoundingClientRect().width ?? 0,
     };
   });
 
-  expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 900);
+  expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 120);
   expect(metrics.textareaScrollHeight).toBeGreaterThan(metrics.textareaClientHeight + 100);
   expect(metrics.previewScrollHeight).toBeGreaterThan(metrics.previewClientHeight + 100);
+  expect(metrics.textareaWidth).toBeGreaterThan(560);
+  expect(metrics.previewWidth).toBeGreaterThan(560);
 
   await page.locator('textarea').evaluate((textarea) => {
     textarea.scrollTop = 700;
@@ -104,4 +108,11 @@ test('split editor keeps panes internally scrollable and syncs preview scrolling
   await expect
     .poll(async () => page.getByTestId('split-preview-pane').evaluate((preview) => preview.scrollTop))
     .toBeGreaterThan(50);
+
+  const previewScrollBeforeClick = await page.getByTestId('split-preview-pane').evaluate((preview) => preview.scrollTop);
+  await page.getByTestId('split-markdown-pane').click({ position: { x: 24, y: 24 } });
+  await page.waitForTimeout(100);
+  const previewScrollAfterClick = await page.getByTestId('split-preview-pane').evaluate((preview) => preview.scrollTop);
+
+  expect(Math.abs(previewScrollAfterClick - previewScrollBeforeClick)).toBeLessThan(8);
 });
