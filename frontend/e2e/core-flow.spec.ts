@@ -86,6 +86,7 @@ test('split editor keeps panes internally scrollable and syncs preview scrolling
   await page.getByRole('button', { name: 'Register' }).click();
 
   await expect(page.getByRole('heading', { name: 'My Notes' })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1080 });
 
   await page.goto('/notes/new');
   await page.getByPlaceholder('Note title').fill('Split Editor Scroll Sync');
