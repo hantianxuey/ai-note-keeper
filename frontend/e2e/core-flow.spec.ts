@@ -21,6 +21,7 @@ test('user can create, search, and ask over a note', async ({ page }) => {
   await page.getByRole('button', { name: 'Register' }).click();
 
   await expect(page.getByRole('heading', { name: 'My Notes' })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1080 });
 
   await page.goto('/notes/new');
   await page.getByPlaceholder('Note title').fill('E2E RAG Quality Gate');
@@ -111,8 +112,8 @@ test('split editor keeps panes internally scrollable and syncs preview scrolling
   expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 120);
   expect(metrics.textareaScrollHeight).toBeGreaterThan(metrics.textareaClientHeight + 100);
   expect(metrics.previewScrollHeight).toBeGreaterThan(metrics.previewClientHeight + 100);
-  expect(metrics.textareaWidth).toBeGreaterThan(560);
-  expect(metrics.previewWidth).toBeGreaterThan(560);
+  expect(metrics.textareaWidth).toBeGreaterThan(760);
+  expect(metrics.previewWidth).toBeGreaterThan(760);
 
   await page.locator('textarea').evaluate((textarea) => {
     textarea.scrollTop = 700;
