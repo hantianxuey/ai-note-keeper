@@ -32,7 +32,7 @@ export default function AppShell({ children, title, eyebrow, description, action
   return (
     <div className="app-shell pb-20 md:pb-0">
       <header className="app-header">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Sparkles size={20} />
@@ -55,7 +55,7 @@ export default function AppShell({ children, title, eyebrow, description, action
         </div>
       </header>
 
-      <div className="page-container grid gap-6 md:grid-cols-[240px_minmax(0,1fr)]">
+      <div className="page-container grid gap-6 md:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="hidden md:block">
           <div className="sticky top-24 space-y-4">
             <nav className="surface-subtle p-2">

@@ -42,6 +42,20 @@ test('user can create, search, and ask over a note', async ({ page }) => {
   await page.getByPlaceholder('Search notes...').fill('retrieval quality');
   await expect(page.getByRole('heading', { name: 'E2E RAG Quality Gate' })).toBeVisible();
 
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const shellMetrics = await page.evaluate(() => {
+    const pageContainer = document.querySelector('.page-container');
+    const notesGrid = document.querySelector('[data-testid="notes-grid"]');
+
+    return {
+      pageContainerWidth: pageContainer?.getBoundingClientRect().width ?? 0,
+      notesGridColumns: notesGrid ? getComputedStyle(notesGrid).gridTemplateColumns.split(' ').length : 0,
+    };
+  });
+
+  expect(shellMetrics.pageContainerWidth).toBeGreaterThan(1500);
+  expect(shellMetrics.notesGridColumns).toBe(4);
+
   await page.goto('/chat');
   await page.getByPlaceholder('Ask anything about your notes...').fill('What should CI verify?');
   await page.keyboard.press('Enter');

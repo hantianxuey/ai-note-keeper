@@ -140,7 +140,7 @@ export default function Home() {
             </div>
         </div>
           ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div data-testid="notes-grid" className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {filteredNotes.map((note) => (
                 <Link
                   key={note.id}

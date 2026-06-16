@@ -445,7 +445,7 @@ export default function NoteEditor() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
             <Link to="/" className="btn-ghost px-2">
               <ArrowLeft size={20} />
