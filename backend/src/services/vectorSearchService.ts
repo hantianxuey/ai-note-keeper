@@ -454,6 +454,31 @@ class VectorSearchService {
       return 0;
     }
   }
+
+  async reindexUserNotes(userId: number): Promise<number> {
+    try {
+      const ready = await this.ensureChunkTable();
+      if (!ready) return 0;
+
+      const provider = await this.getDefaultProvider(userId);
+      logger.info({ userId, provider }, 'Reindexing user notes');
+
+      const result = await pool.query(
+        'SELECT id, user_id, title, content FROM notes WHERE user_id = $1',
+        [userId]
+      );
+      let count = 0;
+      for (const note of result.rows) {
+        await this.indexNote(note.id, note.user_id, note.title, note.content, provider);
+        count++;
+      }
+      logger.info({ userId, count, provider }, 'Reindexed user notes');
+      return count;
+    } catch (error) {
+      logger.error({ err: error, userId }, 'User reindex failed');
+      return 0;
+    }
+  }
 }
 
 export const vectorSearchService = new VectorSearchService();

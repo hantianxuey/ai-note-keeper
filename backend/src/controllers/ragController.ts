@@ -5,6 +5,7 @@ import { embeddingService } from '../services/embeddingService';
 import { ConversationModel } from '../models/Conversation';
 import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { requireUserId } from './controllerUtils';
 
 export const askQuestion = async (
   req: AuthRequest,
@@ -131,12 +132,12 @@ export const deleteConversation = async (
 };
 
 export const reindexNotes = async (
-  _req: AuthRequest,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const count = await vectorSearchService.reindexAllNotes();
+    const count = await vectorSearchService.reindexUserNotes(requireUserId(req));
     res.json({ message: `Reindexed ${count} notes`, count });
   } catch (error) {
     next(error);
