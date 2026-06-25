@@ -132,3 +132,80 @@ test('split editor keeps panes internally scrollable and syncs preview scrolling
 
   expect(Math.abs(previewScrollAfterClick - previewScrollBeforeClick)).toBeLessThan(8);
 });
+
+test('note editor fills its pane and long AI summary scrolls inside the sidebar', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem('i18nextLng', 'en');
+  });
+
+  const longSummary = Array.from(
+    { length: 80 },
+    (_, index) => `Summary point ${index + 1}: this line is intentionally long enough to wrap in the sidebar.`,
+  ).join('\n');
+
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      json: { user: { id: 1, email: 'layout@example.com' } },
+    });
+  });
+
+  await page.route('**/api/notes/11', async (route) => {
+    await route.fulfill({
+      json: {
+        note: {
+          id: 11,
+          user_id: 1,
+          title: 'Long AI Summary Layout',
+          content: '<h1>Editor content</h1><p>Short body.</p>',
+          markdown_content: '# Editor content\n\nShort body.',
+          tags: ['layout'],
+          category: 'UI',
+          ai_summary: longSummary,
+          ai_summary_content_hash: 'layout-summary',
+          ai_summary_generated_at: '2026-06-16T00:00:00.000Z',
+          created_at: '2026-06-16T00:00:00.000Z',
+          updated_at: '2026-06-16T00:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  await page.goto('/notes/11');
+  await expect(page.getByRole('heading', { name: 'Edit Note' })).toBeVisible();
+  await expect(page.getByTestId('richtext-editor-pane')).toBeVisible();
+  await expect(page.getByTestId('ai-summary-content')).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const editorPane = document.querySelector('[data-testid="richtext-editor-pane"]');
+    const editorContent = editorPane?.querySelector('.ProseMirror');
+    const summaryCard = document.querySelector('[data-testid="ai-summary-card"]');
+    const summaryContent = document.querySelector('[data-testid="ai-summary-content"]');
+
+    return {
+      bodyScrollHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      editorPaneHeight: editorPane?.getBoundingClientRect().height ?? 0,
+      editorContentHeight: editorContent?.getBoundingClientRect().height ?? 0,
+      summaryCardHeight: summaryCard?.getBoundingClientRect().height ?? 0,
+      summaryContentClientHeight: summaryContent?.clientHeight ?? 0,
+      summaryContentScrollHeight: summaryContent?.scrollHeight ?? 0,
+    };
+  });
+
+  expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 120);
+  expect(metrics.editorContentHeight).toBeGreaterThanOrEqual(metrics.editorPaneHeight - 2);
+  expect(metrics.summaryCardHeight).toBeLessThan(420);
+  expect(metrics.summaryContentScrollHeight).toBeGreaterThan(metrics.summaryContentClientHeight + 300);
+
+  const richTextPane = page.getByTestId('richtext-editor-pane');
+  const paneBox = await richTextPane.boundingBox();
+  expect(paneBox).not.toBeNull();
+  await richTextPane.click({
+    position: {
+      x: 40,
+      y: Math.max(20, paneBox!.height - 24),
+    },
+  });
+  await expect(page.locator('.ProseMirror')).toBeFocused();
+});

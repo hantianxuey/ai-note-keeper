@@ -76,7 +76,7 @@ export default function NoteEditor() {
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg max-w-none focus:outline-none min-h-full p-4',
+        class: 'prose prose-sm sm:prose lg:prose-lg h-full min-h-full max-w-none cursor-text p-4 focus:outline-none',
       },
     },
     onUpdate: ({ editor }) => {
@@ -570,7 +570,7 @@ export default function NoteEditor() {
                     data-testid="richtext-editor-pane"
                     className={`${editorPaneHeightClass} overflow-auto bg-card`}
                   >
-                    <EditorContent editor={editor} className="min-h-full" />
+                    <EditorContent editor={editor} className="h-full" />
                   </div>
                 )}
 
@@ -692,12 +692,20 @@ export default function NoteEditor() {
           </div>
 
           {summary && (
-              <div className="surface border-accent/30 bg-accent/5 p-5">
+            <div
+              data-testid="ai-summary-card"
+              className="surface border-accent/30 bg-accent/5 p-5"
+            >
               <h3 className="font-semibold mb-2 flex items-center gap-2">
                 <Sparkles size={16} className="text-accent" />
                 {t('aiSummary')}
               </h3>
-                <p className="text-sm leading-6 text-muted-foreground">{summary}</p>
+              <p
+                data-testid="ai-summary-content"
+                className="max-h-80 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-muted-foreground"
+              >
+                {summary}
+              </p>
             </div>
           )}
           </aside>
