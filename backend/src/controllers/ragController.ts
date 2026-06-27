@@ -3,9 +3,37 @@ import { llmService } from '../services/llmService';
 import { vectorSearchService } from '../services/vectorSearchService';
 import { embeddingService } from '../services/embeddingService';
 import { ConversationModel } from '../models/Conversation';
+import { NoteModel } from '../models/Note';
 import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { requireUserId } from './controllerUtils';
+
+const isChineseQuestion = (question: string) => /[\u4e00-\u9fff]/.test(question);
+
+const isNoteInventoryQuestion = (question: string): boolean => {
+  const normalized = question.toLowerCase();
+  return (
+    /(?:\u591a\u5c11|\u51e0\u7bc7|\u51e0\u6761|\u603b\u5171|\u4e00\u5171|\u5168\u90e8|\u6240\u6709).*(?:\u7b14\u8bb0|note)/i.test(question) ||
+    /(?:\u7b14\u8bb0|notes?).*(?:\u591a\u5c11|\u51e0\u7bc7|\u51e0\u6761|\u603b\u5171|\u4e00\u5171|\u5168\u90e8|\u6240\u6709)/i.test(question) ||
+    /\b(how many|count|total number of|list|show all|all)\b.*\bnotes?\b/.test(normalized) ||
+    /\bnotes?\b.*\b(count|total|list|all)\b/.test(normalized)
+  );
+};
+
+const formatNoteInventoryAnswer = (question: string, notes: Array<{ title: string }>): string => {
+  const titles = notes.map((note, index) => `${index + 1}. ${note.title}`).join('\n');
+  if (isChineseQuestion(question)) {
+    if (notes.length === 0) {
+      return '你当前还没有笔记。';
+    }
+    return `你当前共有 ${notes.length} 篇笔记。\n\n${titles}`;
+  }
+
+  if (notes.length === 0) {
+    return 'You currently have no notes.';
+  }
+  return `You currently have ${notes.length} notes.\n\n${titles}`;
+};
 
 export const askQuestion = async (
   req: AuthRequest,
@@ -38,6 +66,37 @@ export const askQuestion = async (
       content: question,
       timestamp: Date.now(),
     };
+
+    if (isNoteInventoryQuestion(question)) {
+      const notes = await NoteModel.findAllByUserId(userId);
+      const answer = formatNoteInventoryAnswer(question, notes);
+      const assistantMessage = {
+        role: 'assistant' as const,
+        content: answer,
+        citations: [],
+        timestamp: Date.now(),
+      };
+
+      await ConversationModel.updateMessages(conversation.id, userId, [
+        ...(conversation.messages || []),
+        userMessage,
+        assistantMessage,
+      ]);
+
+      return res.json({
+        answer,
+        citations: [],
+        conversationId: conversation.id,
+        retrieval: { status: notes.length > 0 ? 'ok' : 'empty' },
+        metadata: {
+          provider: finalProvider,
+          model: finalModel,
+          embeddingProvider: finalEmbeddingProvider,
+          citationCount: 0,
+          noteCount: notes.length,
+        },
+      });
+    }
 
     const { context, citations, retrieval } = await vectorSearchService.getContextForQuestion(userId, question, 5, finalEmbeddingProvider);
 
