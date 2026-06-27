@@ -39,7 +39,7 @@ import { getCursorLineScrollRatio, getScrollTopForRatio, getSyncedScrollTop } fr
 type EditorMode = 'richtext' | 'markdown' | 'preview' | 'split';
 type RichTextToolbarAction = MarkdownToolbarAction | 'undo' | 'redo';
 
-const editorPaneHeightClass = 'h-[calc(100vh-21.5rem)] min-h-[320px] max-h-[560px]';
+const editorPaneHeightClass = 'h-[calc(100vh-21.5rem)] min-h-[320px]';
 
 export default function NoteEditor() {
   const { t } = useTranslation('notes');

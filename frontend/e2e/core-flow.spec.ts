@@ -186,6 +186,9 @@ test('note editor fills its pane and long AI summary scrolls inside the sidebar'
       bodyScrollHeight: document.documentElement.scrollHeight,
       viewportHeight: window.innerHeight,
       editorPaneHeight: editorPane?.getBoundingClientRect().height ?? 0,
+      editorPaneBottomGap: editorPane
+        ? window.innerHeight - editorPane.getBoundingClientRect().bottom
+        : 0,
       editorContentHeight: editorContent?.getBoundingClientRect().height ?? 0,
       summaryCardHeight: summaryCard?.getBoundingClientRect().height ?? 0,
       summaryContentClientHeight: summaryContent?.clientHeight ?? 0,
@@ -194,6 +197,7 @@ test('note editor fills its pane and long AI summary scrolls inside the sidebar'
   });
 
   expect(metrics.bodyScrollHeight).toBeLessThan(metrics.viewportHeight + 120);
+  expect(metrics.editorPaneBottomGap).toBeLessThan(120);
   expect(metrics.editorContentHeight).toBeGreaterThanOrEqual(metrics.editorPaneHeight - 2);
   expect(metrics.summaryCardHeight).toBeLessThan(420);
   expect(metrics.summaryContentScrollHeight).toBeGreaterThan(metrics.summaryContentClientHeight + 300);
