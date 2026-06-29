@@ -103,4 +103,49 @@ describe('ragController', () => {
     expect(res.json.mock.calls[0][0].answer).toContain('A');
     expect(res.json.mock.calls[0][0].answer).toContain('G');
   });
+
+  it('summarizes the note whose title is named in a Chinese prompt', async () => {
+    vi.mocked(ConversationModel.findById).mockResolvedValue(null as any);
+    vi.mocked(ConversationModel.create).mockResolvedValue({
+      id: 100,
+      user_id: 7,
+      title: '总结笔记面经1',
+      messages: [],
+      created_at: new Date(),
+      updated_at: new Date(),
+    } as any);
+    vi.mocked(ConversationModel.updateMessages).mockResolvedValue(undefined as any);
+    vi.mocked(NoteModel.findAllByUserId).mockResolvedValue([
+      { id: 18, title: '面经1', content: 'Java 面试题和项目经历复盘。' },
+      { id: 2, title: 'OD wiki', content: 'OD content' },
+      { id: 7, title: '谈判笔记', content: 'Negotiation content' },
+    ] as any);
+    vi.mocked(llmService.ragAnswer).mockResolvedValue('面经1总结');
+    const res = response();
+
+    await askQuestion({
+      userId: 7,
+      body: {
+        question: '总结笔记面经1',
+        provider: 'demo',
+        model: 'demo-chat',
+        embeddingProvider: 'demo',
+      },
+    } as any, res as any, vi.fn());
+
+    expect(NoteModel.findAllByUserId).toHaveBeenCalledWith(7);
+    expect(vectorSearchService.getContextForQuestion).not.toHaveBeenCalled();
+    expect(llmService.ragAnswer).toHaveBeenCalledWith(
+      '总结笔记面经1',
+      [expect.stringContaining('[Source 1: "面经1"]')],
+      expect.objectContaining({ provider: 'demo', model: 'demo-chat' }),
+      7
+    );
+    expect(vi.mocked(llmService.ragAnswer).mock.calls[0][1][0]).toContain('Java 面试题');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      answer: '面经1总结',
+      citations: [expect.objectContaining({ noteId: 18, noteTitle: '面经1', sourceIndex: 1 })],
+      conversationId: 100,
+    }));
+  });
 });

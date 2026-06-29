@@ -8,6 +8,9 @@ import type { AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { requireUserId } from './controllerUtils';
 
+const MAX_DIRECT_NOTE_CONTEXT_LENGTH = 8000;
+const MAX_DIRECT_NOTE_SNIPPET_LENGTH = 2000;
+
 const isChineseQuestion = (question: string) => /[\u4e00-\u9fff]/.test(question);
 
 const isNoteInventoryQuestion = (question: string): boolean => {
@@ -33,6 +36,29 @@ const formatNoteInventoryAnswer = (question: string, notes: Array<{ title: strin
     return 'You currently have no notes.';
   }
   return `You currently have ${notes.length} notes.\n\n${titles}`;
+};
+
+const isNoteSummaryQuestion = (question: string): boolean =>
+  /(?:\u603b\u7ed3|\u6982\u62ec|\u6458\u8981|\u5f52\u7eb3|summari[sz]e|summary)/i.test(question);
+
+const normalizeTitleText = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[\s"'“”‘’《》<>【】[\]（）()：:，,。.!！?？、_-]/g, '');
+
+const findMentionedNoteByTitle = <T extends { title: string }>(question: string, notes: T[]): T | null => {
+  if (!isNoteSummaryQuestion(question)) return null;
+
+  const normalizedQuestion = normalizeTitleText(question);
+  return notes
+    .filter((note) => normalizeTitleText(note.title).length > 0)
+    .sort((a, b) => normalizeTitleText(b.title).length - normalizeTitleText(a.title).length)
+    .find((note) => normalizedQuestion.includes(normalizeTitleText(note.title))) || null;
+};
+
+const noteContextFor = (note: { title: string; content: string }): string[] => {
+  const content = note.content.substring(0, MAX_DIRECT_NOTE_CONTEXT_LENGTH);
+  return [`[Source 1: "${note.title}"]\n${content}`];
 };
 
 export const askQuestion = async (
@@ -96,6 +122,55 @@ export const askQuestion = async (
           noteCount: notes.length,
         },
       });
+    }
+
+    if (isNoteSummaryQuestion(question)) {
+      const notes = await NoteModel.findAllByUserId(userId);
+      const matchedNote = findMentionedNoteByTitle(question, notes);
+
+      if (matchedNote) {
+        const context = noteContextFor(matchedNote);
+        const answer = await llmService.ragAnswer(question, context, {
+          provider: finalProvider,
+          model: finalModel,
+          temperature: 0.7,
+        }, userId);
+        const citations = [{
+          noteId: matchedNote.id,
+          noteTitle: matchedNote.title,
+          snippet: matchedNote.content.substring(0, MAX_DIRECT_NOTE_SNIPPET_LENGTH),
+          sourceIndex: 1,
+          searchSource: 'keyword' as const,
+          rank: 1,
+          score: 1,
+        }];
+        const assistantMessage = {
+          role: 'assistant' as const,
+          content: answer,
+          citations,
+          timestamp: Date.now(),
+        };
+
+        await ConversationModel.updateMessages(conversation.id, userId, [
+          ...(conversation.messages || []),
+          userMessage,
+          assistantMessage,
+        ]);
+
+        return res.json({
+          answer,
+          citations,
+          conversationId: conversation.id,
+          retrieval: { status: 'ok' },
+          metadata: {
+            provider: finalProvider,
+            model: finalModel,
+            embeddingProvider: finalEmbeddingProvider,
+            citationCount: citations.length,
+            matchedNoteId: matchedNote.id,
+          },
+        });
+      }
     }
 
     const { context, citations, retrieval } = await vectorSearchService.getContextForQuestion(userId, question, 5, finalEmbeddingProvider);
